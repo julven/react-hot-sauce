@@ -1,0 +1,1912 @@
+<!--
+  ===========================================================
+  EMBER & BRINE — Single-page React app for GoHighLevel (CDN only, no build step)
+  ===========================================================
+  One GHL page, five views, switched by React Router (HashRouter):
+    yourpage#/          → home: best sellers, hottest, heat picker, reviews, FAQ
+    yourpage#/sauces    → all sauces with search and heat filter
+                           (search is kept in the link, e.g. #/sauces?q=ghost&heat=5)
+    yourpage#/sauce/1   → one sauce: full details, quantity, and total price
+                           (loaded from ITEM_URL; unknown ids show a "not found" page)
+    yourpage#/checkout  → order summary (left) + Stripe card form (right), test mode by default
+    yourpage#/orders    → track an order by its reference (order_key), e.g. #/orders/53264ed2-...
+  HashRouter is used because GHL serves a single page URL; the part after # never
+  reaches GHL's server, so refreshes and shared links always work.
+
+  Loads React 18.3.1, React Router 6.26.2, Babel Standalone, and Bootstrap 5.3.3 CSS from jsDelivr.
+
+  HOW TO USE IN GHL
+  1. Add a full-width section with a "Custom JS/HTML" (code) element.
+  2. Paste EVERYTHING in this file.
+  3. Edit CONFIG at the top of the React script (API URLs, shipping, your Stripe test key, and ORDER_URL).
+
+  NOTE: Bootstrap's CSS applies to the whole page, so other GHL elements on this
+  page may pick up Bootstrap's base styles. Best results: build the page from this block alone.
+-->
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+
+<!-- Brand layer: only what Bootstrap can't do on its own (brand colors, font, a few sizes). -->
+<style>
+  html, body { margin: 0 !important; padding: 0 !important; }
+  :root {
+    --eb-mustard: #F2C14E; --eb-plum: #2E1A2B; --eb-chili: #C8321F;
+    --eb-lime: #E3F0B7; --eb-paper: #FFFCF4; --eb-soft: #5B4558;
+    --bs-body-font-family: "Bricolage Grotesque", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --bs-body-color: var(--eb-plum); --bs-body-bg: var(--eb-paper);
+    --bs-link-color-rgb: 46,26,43; --bs-link-hover-color-rgb: 200,50,31;
+  }
+  #eb-store { font-family: var(--bs-body-font-family); color: var(--eb-plum); background: var(--eb-paper); }
+
+  /* Brand color utilities */
+  .bg-mustard { background: var(--eb-mustard) !important; } .bg-plum { background: var(--eb-plum) !important; }
+  .bg-chili { background: var(--eb-chili) !important; }     .bg-lime { background: var(--eb-lime) !important; }
+  .bg-paper { background: var(--eb-paper) !important; }     .text-mustard { color: var(--eb-mustard) !important; }
+  .text-soft { color: var(--eb-soft) !important; }          .text-muted-plum { color: #CDBFCB !important; }
+
+  /* Brand buttons */
+  .btn-plum { --bs-btn-bg: var(--eb-plum); --bs-btn-border-color: var(--eb-plum); --bs-btn-color: var(--eb-paper);
+    --bs-btn-hover-bg: var(--eb-chili); --bs-btn-hover-border-color: var(--eb-chili); --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--eb-chili); --bs-btn-active-border-color: var(--eb-chili); }
+  .btn-outline-plum { --bs-btn-color: var(--eb-plum); --bs-btn-border-color: var(--eb-plum); --bs-btn-border-width: 2px;
+    --bs-btn-hover-bg: var(--eb-plum); --bs-btn-hover-color: var(--eb-paper); --bs-btn-hover-border-color: var(--eb-plum); }
+  .btn-mustard { --bs-btn-bg: var(--eb-mustard); --bs-btn-border-color: var(--eb-mustard); --bs-btn-color: var(--eb-plum);
+    --bs-btn-hover-bg: var(--eb-paper); --bs-btn-hover-border-color: var(--eb-paper); --bs-btn-hover-color: var(--eb-plum); }
+  .btn:focus-visible, .form-control:focus, .form-range:focus { box-shadow: 0 0 0 .25rem rgba(200,50,31,.35); }
+
+  /* Type */
+  .eb-display { font-weight: 800; letter-spacing: -0.045em; line-height: .92; font-size: clamp(44px, 7vw, 92px); }
+  .eb-h2 { font-weight: 800; letter-spacing: -0.035em; line-height: 1; font-size: clamp(34px, 4.5vw, 56px); max-width: 16ch; }
+
+  /* Section padding (Bootstrap's largest spacer is 48px, so these are custom) */
+  .eb-section { padding: 112px 0; }
+  .eb-hero { padding: 80px 0 112px; }
+  @media (max-width: 767.98px) { .eb-section { padding: 72px 0; } .eb-hero { padding: 48px 0 72px; } }
+  #eb-store .container { padding-left: 40px; padding-right: 40px; }
+  @media (max-width: 767.98px) { #eb-store .container { padding-left: 24px; padding-right: 24px; } }
+  #eb-store section { scroll-margin-top: 80px; }
+
+  /* Sticky header that shrinks */
+  .eb-nav { box-shadow: 0 1px 0 rgba(46,26,43,.12); z-index: 1030; }
+  .eb-nav .navbar-brand { font-weight: 800; font-size: 24px; letter-spacing: -0.03em; transition: font-size .25s ease; }
+  .eb-nav .eb-bar { min-height: 72px; transition: min-height .25s ease; }
+  .eb-nav.eb-scrolled .eb-bar { min-height: 56px; }
+  .eb-nav.eb-scrolled .navbar-brand { font-size: 20px; }
+  .eb-nav .nav-link { font-weight: 600; color: var(--eb-plum); }
+
+  /* Heat picker card */
+  .eb-picker { box-shadow: 10px 10px 0 var(--eb-plum); }
+  .eb-range { height: 14px; border-radius: 7px; background: linear-gradient(90deg, #6B9E3A, #F2C14E 35%, #F08A24 60%, #C8321F 80%, #2E1A2B); }
+  .eb-range::-webkit-slider-runnable-track { background: transparent; }
+  .eb-range::-moz-range-track { background: transparent; }
+  .eb-range::-webkit-slider-thumb { width: 30px; height: 30px; margin-top: -8px; background: var(--eb-paper); border: 4px solid var(--eb-plum); }
+  .eb-range::-moz-range-thumb { width: 24px; height: 24px; background: var(--eb-paper); border: 4px solid var(--eb-plum); }
+  .eb-swap { animation: eb-pop .35s ease; }
+  @keyframes eb-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* Product images: always contained in their box */
+  .eb-img-box { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .eb-img-box img { height: 100% !important; width: auto !important; max-width: 100% !important; object-fit: contain; }
+
+  /* Heat marks */
+  .eb-heat i { display: inline-block; width: 10px; height: 16px; margin-right: 3px; border-radius: 50% / 60% 60% 40% 40%; background: #E6DCC7; }
+  .eb-heat i.on { background: var(--eb-chili); }
+
+  /* Process numbers */
+  .eb-step-num { font-size: 64px; font-weight: 800; line-height: 1; }
+
+  /* FAQ accordion in brand colors */
+  .eb-faq .accordion-button { font-weight: 600; font-size: 19px; background: transparent; color: var(--eb-plum); box-shadow: none; }
+  .eb-faq .accordion-button:not(.collapsed) { background: transparent; color: var(--eb-plum); }
+  .eb-faq .accordion-item { background: transparent; border-color: #E6DCC7; }
+
+  @media (prefers-reduced-motion: reduce) { #eb-store *, .offcanvas, .toast { animation: none !important; transition: none !important; } }
+</style>
+
+<!-- React mounts here -->
+<div id="eb-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@remix-run/router@1.19.2/dist/router.umd.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/react-router@6.26.2/dist/umd/react-router.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/react-router-dom@6.26.2/dist/umd/react-router-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const { HashRouter, Routes, Route, Link, NavLink, useLocation, useSearchParams, useParams, useNavigate } = ReactRouterDOM;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/* ========== ROUTES ==========
+   Uses HashRouter, so everything runs on one GHL page:
+     #/          → home (best sellers + hottest)
+     #/sauces    → all sauces with search (e.g. #/sauces?q=ghost&heat=5)
+     #/sauce/:id → one sauce, with quantity and total (e.g. #/sauce/1)
+     #/checkout  → order summary + Stripe card form (test mode)
+     #/orders    → look up an order by its reference (order_key UUID)
+     #/orders/:orderKey → that order's details, shareable */
+
+/* ========== CONFIG — edit for your store ========== */
+const CONFIG = {
+  API_URL: "https://general-server-nine.vercel.app/api/hotsauce/top", // loads first
+  ALL_URL: "https://general-server-nine.vercel.app/api/hotsauce",     // loads when the Sauces page opens
+  ITEM_URL: "https://general-server-nine.vercel.app/api/hotsauce/id/:id", // one sauce; :id is replaced
+  MAX_QTY: 99, // most bottles of one sauce per order (also limited by stock)
+  SHIPPING_FLAT: 6.95, // shipping charged below FREE_SHIP_AT
+
+  /* ---- Stripe ----
+     STRIPE_PUBLISHABLE_KEY: your TEST publishable key (Stripe Dashboard → Developers → API keys,
+     starts with pk_test_). Safe to keep in page code. Never put a secret key (sk_...) here.
+     ORDER_URL: your server endpoint that saves the order and charges the card.
+       Leave "" for test mode: Stripe checks the card, nothing is saved or charged.
+     ORDER_CONFIRM_URL: optional, called after bank verification (3D Secure) finishes; :id is the order id.
+       If empty, the page sends the same request to ORDER_URL again (same order_key and pm),
+       and your server replies with the payment's current status instead of charging again.
+     See the note above handleSubmit in CheckoutPage for the exact request and replies. */
+  STRIPE_PUBLISHABLE_KEY: "pk_test_51MBpvdGLHvN4FwS9NOVmVHrpHOho1s6yOSX4EkNOzfmPL2FSch7vwKywC6De47c330pcX3dsnAQcg01kByEJj4dC00oaePyIrP",
+  ORDER_URL: "https://general-server-nine.vercel.app/api/hotsauce-order", // POST: save order + charge card
+  DEBUG_CHECKOUT: true,   // logs every checkout step to the browser console; set false when live
+  ORDER_LOOKUP_URL: "https://general-server-nine.vercel.app/api/hotsauce-order/:order_key", // GET one order; :order_key is replaced
+  ORDER_CONFIRM_URL: "",  // optional; if empty, the page re-sends the same order to ORDER_URL after bank verification
+  FREE_SHIP_AT: 35,
+  CURRENCY: "$",
+  BUNDLE: { id: "trio", name: "The Trio", price: 31, color: "#F08A24", bg: "#FCE9C6", stock: null },
+  CART_KEY: "eb-cart",
+  CART_ITEMS_KEY: "eb-cart-items"
+};
+
+/* ---------- helpers ---------- */
+const money = (n) => CONFIG.CURRENCY + n.toFixed(2);
+
+function bottleSrc(color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 220">
+    <rect x="38" y="4" width="24" height="22" rx="4" fill="#2E1A2B"/>
+    <path d="M40 26h20v24c0 6 18 14 18 30v124a12 12 0 0 1-12 12H34a12 12 0 0 1-12-12V80c0-16 18-24 18-30z" fill="${color}"/>
+    <rect x="22" y="104" width="56" height="70" fill="#FFFCF4"/>
+    <path d="M50 120c6 8 9 14 9 20a9 9 0 0 1-18 0c0-6 3-12 9-20z" fill="${color}"/>
+    <rect x="32" y="158" width="36" height="5" rx="2.5" fill="#2E1A2B"/>
+    <path d="M30 60c-2 6-2 14-2 20v100" stroke="#fff" stroke-opacity=".35" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+const imgFor = (p) => p.image || bottleSrc(p.color);
+const itemPath = (p) => `/sauce/${encodeURIComponent(p.dbId)}`;
+const HEAT_LABELS = ["", "Mild", "Medium", "Hot", "Very hot", "Extreme"];
+const isSoldOut = (p) => p.stock !== null && p.stock !== undefined && p.stock <= 0;
+
+function mapSauce(r) {
+  return {
+    id: String(r.slug || r.id),          // cart key
+    dbId: String(r.id != null ? r.id : r.slug), // used in the item page link and API
+    name: r.name || "Hot sauce",
+    desc: r.description || "",
+    heat: Math.min(5, Math.max(1, Number(r.heat_level) || 1)),
+    price: (Number(r.price_cents) || 0) / 100,
+    color: r.color_hex || "#C8321F",
+    bg: r.bg_hex || "#FBE3D2",
+    image: r.image_url || "",
+    buyUrl: r.buy_url || "",
+    stock: r.stock_qty == null ? null : Number(r.stock_qty),
+    sizeOz: r.size_oz ? parseFloat(r.size_oz) : null,
+    peppers: Array.isArray(r.main_peppers) ? r.main_peppers : [],
+    ingredients: r.ingredients || "",
+    fermentDays: r.ferment_days == null ? null : Number(r.ferment_days),
+    currency: r.currency || "USD",
+    vegan: !!r.is_vegan,
+    glutenFree: !!r.is_gluten_free
+  };
+}
+
+function loadCartItems() {
+  try { return JSON.parse(localStorage.getItem(CONFIG.CART_ITEMS_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+function loadCart() {
+  try { return JSON.parse(localStorage.getItem(CONFIG.CART_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+
+/* ---------- data hook ---------- */
+const keepActive = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => r && r.is_active !== false).map(mapSauce);
+const byHeatThenName = (a, b) => a.heat - b.heat || a.name.localeCompare(b.name);
+
+function getJson(url) {
+  return fetch(url, { headers: { Accept: "application/json" } })
+    .then((res) => { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); });
+}
+
+// /top returns { best_selling: [...], hottest: [...] }. The API's order is kept (it's a ranking).
+function fetchTop() {
+  return getJson(CONFIG.API_URL).then((data) => ({
+    bestSelling: keepActive(data && data.best_selling),
+    hottest: keepActive(data && data.hottest)
+  }));
+}
+
+// The full list returns a plain array (or { data: [...] }).
+function fetchAll() {
+  return getJson(CONFIG.ALL_URL).then((data) => keepActive(Array.isArray(data) ? data : data && data.data).sort(byHeatThenName));
+}
+
+// Unique sauces across lists, by id
+function uniqueSauces(lists) {
+  const seen = {};
+  const out = [];
+  lists.forEach((list) => list.forEach((s) => { if (!seen[s.id]) { seen[s.id] = true; out.push(s); } }));
+  return out;
+}
+
+// Top lists load right away. The full list loads the first time the Sauces page opens,
+// then stays cached while the visitor moves between pages.
+function useSauceData() {
+  const [top, setTop] = useState({ status: "loading", bestSelling: [], hottest: [] });
+  const [full, setFull] = useState({ status: "idle", all: [] });
+  const fullStarted = useRef(false);
+
+  const loadTop = useCallback(() => {
+    setTop({ status: "loading", bestSelling: [], hottest: [] });
+    fetchTop()
+      .then((d) => setTop({ status: "ready", ...d }))
+      .catch((err) => { console.error("Hot sauce API error:", err); setTop((t) => ({ ...t, status: "error" })); });
+  }, []);
+
+  const loadAll = useCallback(() => {
+    fullStarted.current = true;
+    setFull({ status: "loading", all: [] });
+    fetchAll()
+      .then((all) => setFull({ status: "ready", all }))
+      .catch((err) => { console.error("Hot sauce API error:", err); setFull((f) => ({ ...f, status: "error" })); });
+  }, []);
+
+  const ensureAll = useCallback(() => { if (!fullStarted.current) loadAll(); }, [loadAll]);
+
+  useEffect(loadTop, [loadTop]);
+
+  const topItems = useMemo(() => uniqueSauces([top.bestSelling, top.hottest]).sort(byHeatThenName), [top.bestSelling, top.hottest]);
+  const known = useMemo(() => uniqueSauces([full.all, top.bestSelling, top.hottest]), [full.all, top.bestSelling, top.hottest]);
+
+  return { top, full, topItems, known, reloadTop: loadTop, reloadAll: loadAll, ensureAll };
+}
+
+// Link to a section of the home page, from any page
+function SectionLink({ section, children, ...rest }) {
+  return <Link to="/" state={{ section }} {...rest}>{children}</Link>;
+}
+
+// Scrolls to the top on page change, or to a section when a link asks for one
+function ScrollManager() {
+  const location = useLocation();
+  useEffect(() => {
+    const section = location.state && location.state.section;
+    if (section === "keep") return;
+    const id = setTimeout(() => {
+      const el = section && document.getElementById(section);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      else window.scrollTo(0, 0);
+    }, 30);
+    return () => clearTimeout(id);
+  }, [location.key]);
+  return null;
+}
+
+/* ---------- small pieces ---------- */
+function HeatMarks({ level }) {
+  return (
+    <span className="eb-heat d-inline-flex align-items-center" aria-label={`Heat ${level} of 5`}>
+      {[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= level ? "on" : ""} />)}
+    </span>
+  );
+}
+
+function BuyButton({ product, onAdd, className = "" }) {
+  if (isSoldOut(product)) {
+    return <button className={`btn btn-outline-secondary rounded-pill fw-semibold ${className}`} disabled>Sold out</button>;
+  }
+  if (product.buyUrl) {
+    return <a className={`btn btn-plum rounded-pill fw-semibold ${className}`} href={product.buyUrl}>Buy now</a>;
+  }
+  return <button className={`btn btn-plum rounded-pill fw-semibold ${className}`} onClick={() => onAdd(product.id)}>Add to cart</button>;
+}
+
+/* ---------- header ---------- */
+function Header({ count, onOpenCart }) {
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const close = () => setMenuOpen(false);
+  const activeStyle = { textDecoration: "underline", textUnderlineOffset: 6, textDecorationThickness: 2 };
+  return (
+    <nav className={`navbar navbar-expand-md bg-mustard sticky-top eb-nav ${scrolled ? "eb-scrolled" : ""}`}>
+      <div className="container eb-bar">
+        <SectionLink section="top" className="navbar-brand text-reset" onClick={close}>Ember &amp; Brine</SectionLink>
+        <div className="d-flex align-items-center gap-2 order-md-last">
+          <button className="btn bg-paper rounded-pill fw-semibold d-flex align-items-center gap-2" onClick={onOpenCart} aria-label="Open cart">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7z" /><path d="M9 7a3 3 0 0 1 6 0" /></svg>
+            <span className="d-none d-sm-inline">Cart</span>
+            <span className="badge rounded-pill bg-chili">{count}</span>
+          </button>
+          <button className="navbar-toggler border-0" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-label="Open menu">
+            <span className="navbar-toggler-icon" />
+          </button>
+        </div>
+        <div className={`collapse navbar-collapse ${menuOpen ? "show" : ""}`}>
+          <ul className="navbar-nav mx-auto gap-md-4 py-3 py-md-0">
+            <li className="nav-item">
+              <NavLink to="/" end state={{ section: "top" }} className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>Home</NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink to="/sauces" className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>Sauces</NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink to="/orders" className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>Track order</NavLink>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/* ---------- heat picker ---------- */
+function HeatPicker({ sauces, status, onAdd }) {
+  const [level, setLevel] = useState(2);
+  const [index, setIndex] = useState(0);
+  const [animKey, setAnimKey] = useState(0);
+
+  const matches = useMemo(() => {
+    if (!sauces.length) return [];
+    const nearest = sauces.reduce((best, s) => (Math.abs(s.heat - level) < Math.abs(best - level) ? s.heat : best), sauces[0].heat);
+    return sauces.filter((s) => s.heat === nearest);
+  }, [sauces, level]);
+
+  useEffect(() => { setIndex(0); }, [level]);
+  useEffect(() => { setAnimKey((k) => k + 1); }, [level, index]);
+
+  const p = matches.length ? matches[index % matches.length] : null;
+
+  return (
+    <div className="bg-paper rounded-5 p-4 p-lg-5 eb-picker" aria-live="polite">
+      <p className="fw-semibold fs-5 mb-1">How hot do you like it?</p>
+      <p className="text-soft small mb-3">Slide to find your sauce.</p>
+      <input type="range" className="form-range eb-range" min="1" max="5" step="1" value={level}
+        onChange={(e) => setLevel(+e.target.value)} aria-label="Heat level, 1 to 5" />
+      <div className="d-flex justify-content-between small text-soft mt-2"><span>Barely there</span><span>Bring tissues</span></div>
+      <hr className="my-4" style={{ borderTop: "2px dashed #CDBFCB", opacity: 1 }} />
+
+      {status === "loading" && (
+        <p className="text-soft small mb-0 placeholder-glow"><span className="placeholder col-10" /><span className="placeholder col-7" /></p>
+      )}
+      {status === "error" && <p className="text-soft small mb-0">Sauce suggestions will show once the lineup loads.</p>}
+      {status === "ready" && !p && <p className="text-soft small mb-0">No sauces are available right now.</p>}
+      {p && (
+        <div className="d-flex gap-3 align-items-center eb-swap" key={animKey}>
+          <div className="eb-img-box flex-shrink-0" style={{ width: 80, height: 150 }}><img src={imgFor(p)} alt={`${p.name} bottle`} /></div>
+          <div style={{ minWidth: 0 }}>
+            <p className="fw-bold fs-3 lh-1 mb-2"><Link to={itemPath(p)} className="text-reset text-decoration-none">{p.name}</Link></p>
+            <p className="small text-soft mb-3">{p.desc}</p>
+            <div className="d-flex flex-wrap align-items-center gap-3">
+              <HeatMarks level={p.heat} /><strong>{money(p.price)}</strong>
+              <BuyButton product={p} onAdd={onAdd} className="btn-sm px-3" />
+            </div>
+            {matches.length > 1 && (
+              <button className="btn btn-link btn-sm p-0 mt-2 text-reset" onClick={() => setIndex(index + 1)}>
+                Show another at this heat ({(index % matches.length) + 1} of {matches.length})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Hero(props) {
+  return (
+    <section className="bg-mustard eb-hero overflow-hidden">
+      <div className="container">
+        <div className="row g-5 align-items-center">
+          <div className="col-lg-7">
+            <h1 className="eb-display mb-4">Fermented hot sauce, from mild to mean.</h1>
+            <p className="fs-5 text-soft mb-4" style={{ maxWidth: "30ch" }}>Small-batch sauces made with real peppers, fermented for weeks and bottled by hand in Austin.</p>
+            <div className="d-flex flex-wrap gap-3">
+              <Link to="/sauces" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold">Shop all sauces</Link>
+              <SectionLink section="eb-bundle" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Try the trio</SectionLink>
+            </div>
+          </div>
+          <div className="col-lg-5"><HeatPicker {...props} /></div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- products ---------- */
+function ProductCard({ p, onAdd }) {
+  const meta = [p.sizeOz && `${p.sizeOz} oz`, p.vegan && "Vegan", p.glutenFree && "Gluten-free"].filter(Boolean);
+  return (
+    <div className="col">
+      <div className="d-flex flex-column h-100">
+        <Link to={itemPath(p)} className="eb-img-box rounded-5 p-4 d-flex" style={{ height: 280, background: p.bg }} aria-label={`View ${p.name}`}>
+          <img src={imgFor(p)} alt={`${p.name} hot sauce bottle`} loading="lazy" />
+        </Link>
+        <div className="d-flex flex-column flex-grow-1 gap-2 pt-3 px-1">
+          <div className="d-flex justify-content-between align-items-baseline gap-2">
+            <h3 className="h5 fw-bold mb-0"><Link to={itemPath(p)} className="text-reset text-decoration-none">{p.name}</Link></h3><span className="fw-semibold">{money(p.price)}</span>
+          </div>
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <HeatMarks level={p.heat} />
+            {isSoldOut(p) ? <span className="badge bg-secondary">Sold out</span>
+              : p.stock !== null && p.stock <= 40 ? <span className="small fw-semibold" style={{ color: "var(--eb-chili)" }}>Only {p.stock} left</span> : null}
+          </div>
+          <p className="small text-soft flex-grow-1 mb-0">{p.desc}</p>
+          {meta.length > 0 && <p className="small text-soft mb-1">{meta.join(", ")}</p>}
+          <BuyButton product={p} onAdd={onAdd} className="w-100" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const GRID = "row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-4";
+
+function LoadingCards() {
+  return (
+    <div className={GRID}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div className="col" key={i} aria-hidden="true">
+          <div className="placeholder-glow">
+            <div className="placeholder w-100 rounded-5" style={{ height: 280 }} />
+            <div className="placeholder col-8 mt-3" /><div className="placeholder col-5 mt-2" />
+            <div className="placeholder col-12 mt-3 rounded-pill" style={{ height: 38 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProductRow({ title, note, items, onAdd }) {
+  if (!items.length) return null;
+  return (
+    <div className="mb-5">
+      <div className="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-4">
+        <h3 className="fw-bold mb-0" style={{ fontSize: "clamp(24px, 3vw, 32px)", letterSpacing: "-0.02em" }}>{title}</h3>
+        {note && <p className="text-soft small mb-0">{note}</p>}
+      </div>
+      <div className={GRID}>
+        {items.map((p) => <ProductCard key={p.id} p={p} onAdd={onAdd} />)}
+      </div>
+    </div>
+  );
+}
+
+function Shop({ status, bestSelling, hottest, reload, onAdd }) {
+  const nothingTop = status === "ready" && !bestSelling.length && !hottest.length;
+  return (
+    <section className="eb-section" id="eb-shop">
+      <div className="container">
+        <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-5">
+          <h2 className="eb-h2 mb-0">The lineup</h2>
+          <p className="text-soft mb-0" style={{ maxWidth: "42ch" }}>Small-batch and fermented. Heat is rated on a five-pepper scale.</p>
+        </div>
+
+        {status === "loading" && <LoadingCards />}
+
+        {status === "error" && (
+          <div>
+            <p className="text-soft mb-3">The sauces couldn't load. Check your connection and try again.</p>
+            <button className="btn btn-outline-plum rounded-pill px-4" onClick={reload}>Try again</button>
+          </div>
+        )}
+
+        {status === "ready" && (
+          <>
+            <ProductRow title="Best sellers" note="What people order most." items={bestSelling} onAdd={onAdd} />
+            <ProductRow title="Hottest" note="For when mild won't do." items={hottest} onAdd={onAdd} />
+            {nothingTop && <p className="text-soft">No featured sauces right now. See the full lineup instead.</p>}
+          </>
+        )}
+
+        <div className="text-center mt-2">
+          <Link to="/sauces" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Show all</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- all sauces page ---------- */
+function matchesSearch(p, words) {
+  if (!words.length) return true;
+  const text = [p.name, p.desc, p.peppers.join(" ")].join(" ").toLowerCase();
+  return words.every((w) => text.indexOf(w) > -1);
+}
+
+function SaucesPage({ status, all, reload, ensureAll, onAdd }) {
+  useEffect(() => { ensureAll(); }, [ensureAll]);
+
+  // Search and heat live in the URL (#/sauces?q=ghost&heat=5), so results can be shared and Back works
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") || "";
+  const heat = Math.min(5, Math.max(0, parseInt(params.get("heat"), 10) || 0)); // 0 = any heat
+  const inputRef = useRef(null);
+
+  function update(next) {
+    const p = new URLSearchParams(params);
+    Object.keys(next).forEach((k) => { if (next[k]) p.set(k, next[k]); else p.delete(k); });
+    setParams(p.toString(), { replace: true, state: { section: "keep" } });
+  }
+  const setQuery = (q) => update({ q });
+  const setHeat = (h) => update({ heat: h ? String(h) : "" });
+
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const results = all.filter((p) => matchesSearch(p, words) && (!heat || p.heat === heat));
+  const filtered = words.length > 0 || heat > 0;
+
+  function clearAll() { update({ q: "", heat: "" }); if (inputRef.current) inputRef.current.focus(); }
+
+  return (
+    <>
+      <section className="bg-mustard" style={{ padding: "64px 0 56px" }}>
+        <div className="container">
+          <h1 className="eb-display mb-3" style={{ fontSize: "clamp(44px, 6vw, 80px)" }}>All sauces</h1>
+          <p className="fs-5 text-soft mb-4" style={{ maxWidth: "40ch" }}>
+            {status === "ready" ? `${all.length} small-batch sauces, from mild to mean.` : "Every small-batch sauce we make, from mild to mean."}
+          </p>
+
+          <div className="position-relative mb-3" style={{ maxWidth: 640 }}>
+            <svg className="position-absolute top-50 translate-middle-y" style={{ left: 22, pointerEvents: "none" }} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+            </svg>
+            <input ref={inputRef} type="search" className="form-control form-control-lg rounded-pill border-2 bg-paper"
+              style={{ borderColor: "var(--eb-plum)", paddingLeft: 54, paddingRight: query ? 92 : 24, height: 60 }}
+              placeholder="Search by name, pepper, or flavor" aria-label="Search sauces"
+              value={query} onChange={(e) => setQuery(e.target.value)} />
+            {query && (
+              <button className="btn btn-sm btn-link text-reset position-absolute top-50 translate-middle-y fw-semibold" style={{ right: 16 }}
+                onClick={() => { setQuery(""); inputRef.current && inputRef.current.focus(); }}>Clear</button>
+            )}
+          </div>
+
+          <div className="d-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter by heat">
+            <span className="small fw-semibold me-1">Heat:</span>
+            {[0, 1, 2, 3, 4, 5].map((h) => (
+              <button key={h} className={`btn btn-sm rounded-pill px-3 ${heat === h ? "btn-plum" : "btn-outline-plum"}`}
+                aria-pressed={heat === h} onClick={() => setHeat(h)}>
+                {h === 0 ? "Any" : h}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="eb-section" id="eb-all" style={{ paddingTop: 56 }}>
+        <div className="container">
+          {(status === "loading" || status === "idle") && <LoadingCards />}
+
+          {status === "error" && (
+            <div>
+              <p className="text-soft mb-3">The sauces couldn't load. Check your connection and try again.</p>
+              <button className="btn btn-outline-plum rounded-pill px-4" onClick={reload}>Try again</button>
+            </div>
+          )}
+
+          {status === "ready" && (
+            <>
+              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+                <p className="text-soft mb-0" role="status" aria-live="polite">
+                  {filtered ? `Showing ${results.length} of ${all.length} sauces` : `${all.length} sauces`}
+                </p>
+                {filtered && <button className="btn btn-link btn-sm text-reset p-0 fw-semibold" onClick={clearAll}>Clear filters</button>}
+              </div>
+
+              {results.length > 0 ? (
+                <div className={GRID}>{results.map((p) => <ProductCard key={p.id} p={p} onAdd={onAdd} />)}</div>
+              ) : (
+                <div className="text-center py-5">
+                  <p className="fs-5 fw-semibold mb-2">{all.length ? "No sauces match your search." : "No sauces are available right now."}</p>
+                  {all.length > 0 && <p className="text-soft mb-4">Try a pepper name like habanero, or a flavor like mango.</p>}
+                  {filtered && <button className="btn btn-outline-plum rounded-pill px-4" onClick={clearAll}>Clear filters</button>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* ---------- item page ---------- */
+// Fetches one sauce. Result: { status: "loading" | "ready" | "notfound" | "error", item }
+function useSauce(id) {
+  const [state, setState] = useState({ status: "loading", item: null });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading", item: null });
+    fetch(CONFIG.ITEM_URL.replace(":id", encodeURIComponent(id)), { headers: { Accept: "application/json" } })
+      .then((res) => {
+        if (res.status === 404 || res.status === 400) return null; // no such sauce
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const row = data && (data.data || data);
+        if (!row || row.id == null || row.is_active === false) setState({ status: "notfound", item: null });
+        else setState({ status: "ready", item: mapSauce(row) });
+      })
+      .catch((err) => { if (!cancelled) { console.error("Hot sauce API error:", err); setState({ status: "error", item: null }); } });
+    return () => { cancelled = true; };
+  }, [id, attempt]);
+  return { ...state, retry: () => setAttempt((a) => a + 1) };
+}
+
+function NotFound({ title, text }) {
+  return (
+    <section className="eb-section text-center">
+      <div className="container">
+        <div className="mx-auto mb-4 eb-img-box" style={{ width: 90, height: 190, opacity: 0.35 }}><img src={bottleSrc("#5B4558")} alt="" /></div>
+        <h1 className="eb-h2 mx-auto mb-3">{title}</h1>
+        <p className="text-soft mx-auto mb-4" style={{ maxWidth: "44ch" }}>{text}</p>
+        <div className="d-flex flex-wrap justify-content-center gap-3">
+          <Link to="/" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold">Back to the home page</Link>
+          <Link to="/sauces" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Browse all sauces</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QtyStepper({ qty, setQty, max, disabled }) {
+  const clamp = (n) => Math.max(1, Math.min(max, n));
+  return (
+    <div className="input-group input-group-lg rounded-pill border border-2 overflow-hidden flex-nowrap" style={{ width: 170, borderColor: "var(--eb-plum)" }}>
+      <button className="btn btn-link text-reset text-decoration-none fs-4 px-3" type="button" onClick={() => setQty(clamp(qty - 1))}
+        disabled={disabled || qty <= 1} aria-label="Decrease quantity">−</button>
+      <input type="number" inputMode="numeric" className="form-control border-0 text-center fw-bold bg-transparent px-0" min="1" max={max}
+        value={qty} disabled={disabled} aria-label="Quantity"
+        onChange={(e) => { const n = parseInt(e.target.value, 10); setQty(isNaN(n) ? 1 : clamp(n)); }} />
+      <button className="btn btn-link text-reset text-decoration-none fs-4 px-3" type="button" onClick={() => setQty(clamp(qty + 1))}
+        disabled={disabled || qty >= max} aria-label="Increase quantity">+</button>
+    </div>
+  );
+}
+
+// "You may also like": sauces from the top lists, minus the one being viewed
+function YouMayAlsoLike({ currentId, sauces, status, onAdd }) {
+  const picks = sauces.filter((s) => s.dbId !== String(currentId) && s.id !== String(currentId)).slice(0, 5);
+  if (status === "error" || (status === "ready" && picks.length === 0)) return null;
+  return (
+    <section className="eb-section pt-0" aria-labelledby="eb-also-like">
+      <div className="container">
+        <div className="border-top border-2 pt-5" style={{ borderColor: "#E6DCC7" }}>
+          <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+            <h2 className="eb-h2 mb-0" id="eb-also-like">You may also like</h2>
+            <Link to="/sauces" className="fw-semibold text-reset">See all sauces</Link>
+          </div>
+          {status === "loading" ? <LoadingCards /> : (
+            <div className={GRID}>{picks.map((p) => <ProductCard key={p.id} p={p} onAdd={onAdd} />)}</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ItemPage({ cart, onAdd, onBuyNow, related, relatedStatus }) {
+  const { id } = useParams();
+  const { status, item: p, retry } = useSauce(id);
+  const [qty, setQty] = useState(1);
+  useEffect(() => { setQty(1); }, [id]);
+
+  if (status === "loading") {
+    return (
+      <section className="eb-section" aria-busy="true">
+        <div className="container">
+          <div className="row g-5 placeholder-glow">
+            <div className="col-lg-6"><div className="placeholder w-100 rounded-5" style={{ height: 480 }} /></div>
+            <div className="col-lg-6">
+              <div className="placeholder col-4 mb-3" /><div className="placeholder col-9 mb-3" style={{ height: 56 }} />
+              <div className="placeholder col-12 mb-2" /><div className="placeholder col-10 mb-4" />
+              <div className="placeholder col-6 rounded-pill" style={{ height: 52 }} />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+  if (status === "notfound") {
+    return <NotFound title="We couldn't find that sauce." text="It may have sold out for good, or the link may be wrong. Head back to see what's on the shelf." />;
+  }
+  if (status === "error") {
+    return (
+      <section className="eb-section text-center">
+        <div className="container">
+          <h1 className="eb-h2 mx-auto mb-3">This sauce couldn't load.</h1>
+          <p className="text-soft mb-4">Check your connection and try again.</p>
+          <div className="d-flex flex-wrap justify-content-center gap-3">
+            <button className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold" onClick={retry}>Try again</button>
+            <Link to="/" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Back to the home page</Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const soldOut = isSoldOut(p);
+  const inCart = cart[p.id] || 0;
+  const stockLeft = p.stock === null ? CONFIG.MAX_QTY : Math.max(0, p.stock - inCart);
+  const max = Math.max(1, Math.min(CONFIG.MAX_QTY, stockLeft));
+  const cantAddMore = !soldOut && stockLeft <= 0;
+  const q = Math.min(qty, max);
+  const total = p.price * q;
+  const shipLeft = CONFIG.FREE_SHIP_AT - total;
+
+  const facts = [
+    ["Heat", <span className="d-inline-flex align-items-center gap-2"><HeatMarks level={p.heat} />{HEAT_LABELS[p.heat]} ({p.heat} of 5)</span>],
+    p.peppers.length > 0 && ["Peppers", p.peppers.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(", ")],
+    p.ingredients && ["Ingredients", p.ingredients],
+    p.sizeOz && ["Size", `${p.sizeOz} oz bottle`],
+    p.fermentDays !== null && ["Fermented", `${p.fermentDays} days`],
+    ["Diet", [p.vegan ? "Vegan" : "Not vegan", p.glutenFree ? "gluten-free" : "contains gluten"].join(", ")],
+    ["Stock", soldOut ? "Sold out" : p.stock === null ? "In stock" : `${p.stock} bottles left`]
+  ].filter(Boolean);
+
+  return (
+    <>
+    <section className="eb-section" style={{ paddingTop: 48 }}>
+      <div className="container">
+        <nav aria-label="breadcrumb" className="mb-4">
+          <ol className="breadcrumb small mb-0">
+            <li className="breadcrumb-item"><Link to="/" className="text-reset">Home</Link></li>
+            <li className="breadcrumb-item"><Link to="/sauces" className="text-reset">Sauces</Link></li>
+            <li className="breadcrumb-item active text-soft" aria-current="page">{p.name}</li>
+          </ol>
+        </nav>
+
+        <div className="row g-5 align-items-start">
+          <div className="col-lg-6">
+            <div className="eb-img-box rounded-5 p-5" style={{ height: "min(560px, 80vw)", background: p.bg }}>
+              <img src={imgFor(p)} alt={`${p.name} hot sauce bottle`} />
+            </div>
+          </div>
+
+          <div className="col-lg-6">
+            <h1 className="eb-display mb-3" style={{ fontSize: "clamp(40px, 5.5vw, 72px)" }}>{p.name}</h1>
+            <p className="fs-3 fw-semibold mb-3">{money(p.price)} <span className="fs-6 fw-normal text-soft">per bottle</span></p>
+            <p className="fs-5 text-soft mb-4" style={{ maxWidth: "48ch" }}>{p.desc}</p>
+
+            <div className="bg-paper rounded-5 p-4 mb-4 border border-2" style={{ borderColor: "#E6DCC7" }}>
+              {soldOut ? (
+                <p className="fw-semibold mb-0">This sauce is sold out right now.</p>
+              ) : (
+                <>
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                    <div>
+                      <label className="small fw-semibold d-block mb-2">Quantity</label>
+                      <QtyStepper qty={q} setQty={setQty} max={max} disabled={cantAddMore} />
+                    </div>
+                    <div className="text-end">
+                      <div className="small text-soft">Total for {q} {q === 1 ? "bottle" : "bottles"}</div>
+                      <div className="fw-bold" style={{ fontSize: 36, letterSpacing: "-0.02em" }} aria-live="polite">{money(total)}</div>
+                      <div className="small text-soft">{q} × {money(p.price)}</div>
+                    </div>
+                  </div>
+                  <p className="small mb-3" aria-live="polite">
+                    {shipLeft > 0 ? `Add ${money(shipLeft)} more for free shipping.` : "This order ships free."}
+                    {inCart > 0 && ` You already have ${inCart} in your cart.`}
+                  </p>
+                  {cantAddMore ? (
+                    <p className="small fw-semibold mb-0">You have all {p.stock} available bottles in your cart.</p>
+                  ) : (
+                    <div className="d-flex flex-wrap gap-2">
+                      <button className="btn btn-plum btn-lg rounded-pill px-4 fw-semibold flex-grow-1" onClick={() => onAdd(p.id, q, p)}>
+                        Add {q} to cart
+                      </button>
+                      {p.buyUrl ? (
+                        <a className="btn btn-outline-plum btn-lg rounded-pill px-4 fw-semibold flex-grow-1" href={p.buyUrl}>Buy now</a>
+                      ) : (
+                        <button className="btn btn-outline-plum btn-lg rounded-pill px-4 fw-semibold flex-grow-1" onClick={() => onBuyNow(p.id, q, p)}>Buy now</button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <dl className="row mb-4 small">
+              {facts.map(([k, v]) => (
+                <React.Fragment key={k}>
+                  <dt className="col-4 col-sm-3 fw-semibold py-2 border-bottom" style={{ borderColor: "#E6DCC7" }}>{k}</dt>
+                  <dd className="col-8 col-sm-9 mb-0 py-2 border-bottom" style={{ borderColor: "#E6DCC7" }}>{v}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+
+            <Link to="/sauces" className="fw-semibold text-reset">Back to all sauces</Link>
+          </div>
+        </div>
+      </div>
+    </section>
+    <YouMayAlsoLike currentId={id} sauces={related} status={relatedStatus} onAdd={onAdd} />
+    </>
+  );
+}
+
+/* ---------- checkout ---------- */
+// Reads the order server's reply into one shape.
+// Success:  { order: {...hot_sauce_orders row}, items: [...], payment: { status, payment_intent_id, amount_received_cents } }
+// Failure:  HTTP 402 { error: "Your card was declined.", code: "card_declined" }   (nothing saved)
+function readOrderReply(data) {
+  const order = (data && data.order) || {};
+  const payment = (data && data.payment) || {};
+  const cents = (v) => (typeof v === "number" ? v : v != null && v !== "" && !isNaN(Number(v)) ? Number(v) : null);
+  return {
+    status: payment.status || order.payment_status || (data && data.status) || null, // succeeded | requires_action | processing | ...
+    orderId: order.id != null ? order.id : data && data.id,
+    orderKey: order.order_key || null,
+    orderStatus: order.status || null,
+    paymentIntentId: payment.payment_intent_id || order.stripe_payment_intent_id || null,
+    clientSecret: payment.client_secret || (data && data.client_secret) || null,
+    subtotalCents: cents(order.subtotal_cents),
+    shippingCents: cents(order.shipping_cents),
+    taxCents: cents(order.tax_cents),
+    totalCents: cents(order.total_cents != null ? order.total_cents : data && data.total_cents),
+    amountReceivedCents: cents(payment.amount_received_cents != null ? payment.amount_received_cents : order.amount_received_cents),
+    items: (data && data.items) || [],
+    message: (data && (data.error || data.message)) || null,
+    code: (data && data.code) || null
+  };
+}
+
+// Checkout logger: prints each step to the browser console (F12 → Console) when DEBUG_CHECKOUT is on
+const clog = (...args) => { if (CONFIG.DEBUG_CHECKOUT) console.log("%c[checkout]", "color:#C8321F;font-weight:bold", ...args); };
+const cerr = (...args) => { if (CONFIG.DEBUG_CHECKOUT) console.error("[checkout]", ...args); };
+
+function newOrderKey() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  // Fallback for older browsers: random version 4 UUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 15);
+    return (c === "x" ? r : (r & 3) | 8).toString(16);
+  });
+}
+const shippingFor = (subtotal) => (subtotal <= 0 || subtotal >= CONFIG.FREE_SHIP_AT ? 0 : CONFIG.SHIPPING_FLAT);
+
+// Loads Stripe.js once (it must come from js.stripe.com) and returns the Stripe instance
+let stripePromise = null;
+function loadStripe() {
+  if (!stripePromise) {
+    stripePromise = new Promise((resolve, reject) => {
+      if (window.Stripe) return resolve(window.Stripe(CONFIG.STRIPE_PUBLISHABLE_KEY));
+      const sc = document.createElement("script");
+      sc.src = "https://js.stripe.com/v3/";
+      sc.onload = () => (window.Stripe ? resolve(window.Stripe(CONFIG.STRIPE_PUBLISHABLE_KEY)) : reject(new Error("Stripe failed to load")));
+      sc.onerror = () => { stripePromise = null; reject(new Error("Stripe failed to load")); };
+      document.head.appendChild(sc);
+    });
+  }
+  return stripePromise;
+}
+
+// totals (optional): { subtotal, shipping, tax, total } in dollars from the server; used after payment
+function OrderSummary({ lines, subtotal: cartSubtotal, setQty, readOnly, totals }) {
+  const subtotal = totals ? totals.subtotal : cartSubtotal;
+  const shipping = totals ? totals.shipping : shippingFor(cartSubtotal);
+  const tax = totals ? totals.tax : 0;
+  const total = totals ? totals.total : subtotal + shipping;
+  const count = lines.reduce((n, l) => n + l.qty, 0);
+  return (
+    <div className="bg-lime rounded-5 p-4 p-lg-5">
+      <div className="d-flex justify-content-between align-items-baseline mb-3">
+        <h2 className="h4 fw-bold mb-0">Your order</h2>
+        <span className="small text-soft">{count} {count === 1 ? "item" : "items"}</span>
+      </div>
+      <ul className="list-unstyled mb-0">
+        {lines.map(({ p, qty }) => (
+          <li className="d-flex align-items-center gap-3 py-3 border-bottom" style={{ borderColor: "rgba(46,26,43,.15)" }} key={p.id}>
+            <div className="position-relative flex-shrink-0">
+              <div className="eb-img-box rounded-3 p-1 bg-paper" style={{ width: 60, height: 76 }}><img src={imgFor(p)} alt="" /></div>
+              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-plum">{qty}</span>
+            </div>
+            <div className="flex-grow-1" style={{ minWidth: 0 }}>
+              <div className="fw-semibold">{p.dbId ? <Link to={itemPath(p)} className="text-reset text-decoration-none">{p.name}</Link> : p.name}</div>
+              <div className="small text-soft">{money(p.price)} each</div>
+              {!readOnly && (
+                <div className="d-flex align-items-center gap-2 mt-1 small">
+                  <button className="btn btn-link btn-sm p-0 text-reset" onClick={() => setQty(p.id, qty - 1)} aria-label={`Remove one ${p.name}`}>−</button>
+                  <span className="fw-semibold">{qty}</span>
+                  <button className="btn btn-link btn-sm p-0 text-reset" onClick={() => setQty(p.id, qty + 1)} aria-label={`Add one ${p.name}`}
+                    disabled={p.stock !== null && p.stock !== undefined && qty >= p.stock}>+</button>
+                  <button className="btn btn-link btn-sm p-0 ms-2 text-soft" onClick={() => setQty(p.id, 0)}>Remove</button>
+                </div>
+              )}
+            </div>
+            <div className="fw-semibold text-end">{money(p.price * qty)}</div>
+          </li>
+        ))}
+      </ul>
+      <dl className="mt-3 mb-0">
+        <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Subtotal</dt><dd className="mb-0">{money(subtotal)}</dd></div>
+        <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Shipping</dt><dd className="mb-0">{shipping ? money(shipping) : "Free"}</dd></div>
+        {tax > 0 && <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Tax</dt><dd className="mb-0">{money(tax)}</dd></div>}
+        <div className="d-flex justify-content-between pt-3 mt-2 border-top border-2 fs-5 fw-bold" style={{ borderColor: "var(--eb-plum)" }}>
+          <dt>Total</dt><dd className="mb-0">{money(total)}</dd>
+        </div>
+      </dl>
+      {!readOnly && shipping > 0 && (
+        <p className="small mt-3 mb-0">Add {money(CONFIG.FREE_SHIP_AT - subtotal)} more for free shipping.</p>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, id, error, ...rest }) {
+  return (
+    <div>
+      <label htmlFor={id} className="form-label small fw-semibold mb-1">{label}</label>
+      <input id={id} className={`form-control form-control-lg bg-paper ${error ? "is-invalid" : ""}`} style={{ borderRadius: 14 }} {...rest} />
+      {error && <div className="invalid-feedback">{error}</div>}
+    </div>
+  );
+}
+
+function CheckoutPage({ lines, subtotal, setQty, onPaid }) {
+  const [stripe, setStripe] = useState(null);
+  const [stripeError, setStripeError] = useState("");
+  const cardRef = useRef(null);
+  const cardEl = useRef(null);
+  const [cardState, setCardState] = useState({ complete: false, error: "" });
+  const [form, setForm] = useState({ email: "", name: "", address: "", address2: "", city: "", state: "", zip: "" });
+  // One key per checkout. Kept across retries (e.g. after a declined card) so the server
+  // reuses the same pending order instead of creating a duplicate.
+  const orderKey = useRef(newOrderKey());
+  const [errors, setErrors] = useState({});
+  const [processing, setProcessing] = useState(false);
+  const [payError, setPayError] = useState("");
+  const [done, setDone] = useState(null); // order snapshot after success
+
+  const shipping = shippingFor(subtotal);
+  const total = subtotal + shipping;
+
+  // Load Stripe and mount the card field
+  useEffect(() => {
+    if (done || !lines.length) return;
+    let card;
+    let cancelled = false;
+    loadStripe()
+      .then((s) => {
+        if (cancelled || !cardRef.current) return;
+        setStripe(s);
+        const elements = s.elements({
+          fonts: [{ cssSrc: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600&display=swap" }]
+        });
+        card = elements.create("card", {
+          hidePostalCode: true, // ZIP is collected in the shipping fields
+          style: {
+            base: { fontFamily: '"Bricolage Grotesque", system-ui, sans-serif', fontSize: "18px", color: "#2E1A2B", "::placeholder": { color: "#9C8A99" } },
+            invalid: { color: "#C8321F", iconColor: "#C8321F" }
+          }
+        });
+        card.mount(cardRef.current);
+        card.on("change", (e) => setCardState({ complete: e.complete, error: e.error ? e.error.message : "" }));
+        cardEl.current = card;
+      })
+      .catch((err) => { console.error(err); if (!cancelled) setStripeError("The payment form couldn't load. Check your connection and refresh the page."); });
+    return () => { cancelled = true; if (card) card.destroy(); cardEl.current = null; };
+  }, [done, lines.length > 0]);
+
+  const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); if (errors[k]) setErrors({ ...errors, [k]: "" }); };
+
+  function validate() {
+    const e = {};
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Enter an email like name@example.com.";
+    if (!form.name.trim()) e.name = "Enter the name for the shipping label.";
+    if (!form.address.trim()) e.address = "Enter a street address.";
+    if (!form.city.trim()) e.city = "Enter a city.";
+    if (!form.state.trim()) e.state = "Enter a state.";
+    if (!/^\d{5}(-\d{4})?$/.test(form.zip.trim())) e.zip = "Enter a 5-digit ZIP code.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  /* How payment works (Pay button):
+     1. Stripe turns the card into a PaymentMethod (pm_...). Card typos are caught here,
+        before anything is saved.
+     2. Live mode (ORDER_URL set): the page POSTs this JSON to ORDER_URL. Keys match the
+        hot_sauce_orders / hot_sauce_order_items columns:
+          { order_key, customer_name, customer_email,
+            shipping_line1, shipping_line2, shipping_city, shipping_state,
+            shipping_postal_code, shipping_country,
+            stripe_payment_method_id,
+            items: [{ hot_sauce_id, quantity }] }
+        Your server prices the order from the database, charges the card, saves the order, and replies:
+          200 { order: {...}, items: [...], payment: { status: "succeeded", payment_intent_id,
+                amount_received_cents } }                        → paid
+          402 { error: "Your card was declined.", code: "card_declined" } → nothing saved; show error
+        Optional, if your server adds bank verification (3D Secure) support:
+          200 { order: {...}, payment: { status: "requires_action", client_secret } }
+     3. After bank verification, the page asks the server for the result: POST {} to
+        ORDER_CONFIRM_URL if set, otherwise the same request to ORDER_URL again. Either way the
+        server checks the PaymentIntent with Stripe (it must NOT charge again for an order_key
+        that already has a PaymentIntent) and replies { status: "succeeded", id, total_cents }
+        or { status: "failed", message }.
+     Test mode (ORDER_URL is ""): stops after step 1. Nothing is saved or charged. */
+  async function postJson(url, body) {
+    clog("POST →", url);
+    clog("Request body:", body);
+    clog("Request body (JSON):", JSON.stringify(body, null, 2));
+    const t0 = performance.now();
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (netErr) {
+      // fetch only throws for network/CORS problems, never for HTTP error codes
+      cerr("Network or CORS error (no response reached the page):", netErr);
+      throw new Error("We couldn't reach the server. Please check your connection and try again.");
+    }
+    const ms = Math.round(performance.now() - t0);
+    const raw = await res.text();
+    clog(`Response ← HTTP ${res.status} ${res.statusText} (${ms} ms)`);
+    clog("Response headers:", Object.fromEntries(res.headers.entries()));
+    clog("Response body (raw):", raw);
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch (e) { cerr("Response is not JSON:", e.message); }
+    if (data) clog("Response body (parsed):", data);
+    if (!res.ok || !data) {
+      cerr(`Request failed: HTTP ${res.status}`, data || raw);
+      const err = new Error((data && (data.error || data.message)) || "We couldn't place your order. Please try again.");
+      err.code = data && data.code;
+      throw err;
+    }
+    return data;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setPayError("");
+    clog("──────── Pay clicked ────────");
+    clog("Mode:", CONFIG.ORDER_URL ? "live (ORDER_URL set)" : "test (ORDER_URL empty)", "| order_key:", orderKey.current);
+    clog("Cart:", lines.map((l) => ({ name: l.p.name, slug: l.p.id, hot_sauce_id: l.p.dbId, qty: l.qty, price: l.p.price })),
+      "| subtotal:", subtotal, "| shipping:", shipping, "| total:", total);
+    const fieldsOk = validate();
+    clog("Form valid:", fieldsOk, "| card complete:", cardState.complete, "| Stripe loaded:", !!stripe, "| card field mounted:", !!cardEl.current);
+    if (!cardState.complete) setCardState((c) => ({ ...c, error: c.error || "Enter your card number, expiry date, and CVC." }));
+    if (!fieldsOk || !cardState.complete || !stripe || !cardEl.current) { clog("Stopped: fix the form or card field first."); return; }
+
+    // Every item needs its numeric hot_sauces id for the order
+    const items = lines.map((l) => ({ hot_sauce_id: Number(l.p.dbId), quantity: l.qty }));
+    clog("Items for the order:", items);
+    if (CONFIG.ORDER_URL && items.some((i) => !Number.isInteger(i.hot_sauce_id))) {
+      cerr("Stopped: an item has no numeric hot_sauce_id (the trio bundle?)", items);
+      setPayError("The trio bundle can't be ordered online yet. Remove it from your order to continue.");
+      return;
+    }
+
+    setProcessing(true);
+    const address = {
+      line1: form.address.trim(), line2: form.address2.trim() || undefined,
+      city: form.city.trim(), state: form.state.trim().toUpperCase(), postal_code: form.zip.trim(), country: "US"
+    };
+    const billing_details = { name: form.name.trim(), email: form.email.trim(), address };
+    const snapshot = { lines: lines.map((l) => ({ ...l })), subtotal, shipping, total, email: billing_details.email };
+
+    try {
+      // 1. Card → PaymentMethod
+      clog("Step 1: creating Stripe PaymentMethod with billing details:", billing_details);
+      const pmResult = await stripe.createPaymentMethod({ type: "card", card: cardEl.current, billing_details });
+      if (pmResult.error) { cerr("Stripe createPaymentMethod error:", pmResult.error); throw new Error(pmResult.error.message); }
+      const pmId = pmResult.paymentMethod.id;
+      clog("Step 1 done: PaymentMethod", pmId, pmResult.paymentMethod);
+
+      if (!CONFIG.ORDER_URL) {
+        clog("Test mode: stopping after the PaymentMethod. Nothing saved or charged.");
+        // Test mode: stop here
+        setDone({ ...snapshot, reference: pmId, testMode: true });
+        onPaid();
+        return;
+      }
+
+      // 2. Save the order and charge the card on your server
+      const orderBody = {
+        order_key: orderKey.current,
+        customer_name: billing_details.name,
+        customer_email: billing_details.email,
+        shipping_line1: address.line1,
+        shipping_line2: address.line2 || null,
+        shipping_city: address.city,
+        shipping_state: address.state,
+        shipping_postal_code: address.postal_code,
+        shipping_country: address.country,
+        stripe_payment_method_id: pmId,
+        items
+      };
+      clog("Step 2: sending the order to the server");
+      let reply = readOrderReply(await postJson(CONFIG.ORDER_URL, orderBody));
+      clog("Step 2 done: payment status =", reply.status, "| order", reply.orderId, "| order status =", reply.orderStatus, reply);
+
+      // 3. Bank verification, if the card needs it
+      if (reply.status === "requires_action") {
+        if (!reply.clientSecret) {
+          cerr("Server said requires_action but sent no payment.client_secret:", reply);
+          throw new Error("Your bank needs to verify this payment, but verification isn't set up yet. Please try another card.");
+        }
+        clog("Step 3: bank verification needed, opening Stripe's popup");
+        const action = await stripe.handleNextAction({ clientSecret: reply.clientSecret });
+        if (action.error) { cerr("Bank verification error:", action.error); throw new Error(action.error.message); }
+        clog("Step 3: verification finished, PaymentIntent:", action.paymentIntent);
+        clog("Step 3: asking the server for the final status");
+        reply = readOrderReply(CONFIG.ORDER_CONFIRM_URL
+          ? await postJson(CONFIG.ORDER_CONFIRM_URL.replace(":id", encodeURIComponent(reply.orderId)), {})
+          : await postJson(CONFIG.ORDER_URL, orderBody)); // same order_key + pm: server reports the status
+        clog("Step 3 done: payment status =", reply.status, reply);
+      }
+
+      if (reply.status === "processing") {
+        throw new Error("Your payment is still processing. We'll email you once it's confirmed.");
+      }
+      if (reply.status !== "succeeded") {
+        cerr("Payment not completed. Server reply:", reply);
+        throw new Error(reply.message || "The payment didn't go through. Please try again.");
+      }
+      if (reply.orderStatus && reply.orderStatus !== "paid") {
+        clog("Note: payment succeeded but order.status is", reply.orderStatus, "(the server should set it to 'paid').");
+      }
+      clog("Paid. Order", reply.orderId, "| PaymentIntent", reply.paymentIntentId, "| total_cents", reply.totalCents, "| received", reply.amountReceivedCents);
+
+      // Show the server's numbers: they're what was actually charged
+      const toDollars = (c, fallback) => (c != null ? c / 100 : fallback);
+      const totals = {
+        subtotal: toDollars(reply.subtotalCents, subtotal),
+        shipping: toDollars(reply.shippingCents, shipping),
+        tax: toDollars(reply.taxCents, 0),
+        total: toDollars(reply.amountReceivedCents != null ? reply.amountReceivedCents : reply.totalCents, total)
+      };
+      setDone({
+        ...snapshot, totals, total: totals.total,
+        reference: reply.orderId != null ? `Order #${reply.orderId}` : reply.paymentIntentId,
+        paymentIntentId: reply.paymentIntentId, orderId: reply.orderId,
+        orderKey: reply.orderKey || orderKey.current, testMode: false
+      });
+      orderKey.current = newOrderKey(); // the next checkout gets a new key
+      onPaid();
+    } catch (err) {
+      cerr("Checkout failed:", err.message, err);
+      setPayError(err.message || "The payment didn't go through. Please try again.");
+    } finally {
+      clog("──────── Pay finished ────────");
+      setProcessing(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <section className="eb-section" style={{ paddingTop: 56 }}>
+        <div className="container">
+          <div className="row g-5">
+            <div className="col-lg-6">
+              <p className="small fw-semibold mb-2" style={{ color: "var(--eb-chili)" }}>{done.testMode ? "Test order complete" : "Order confirmed"}</p>
+              <h1 className="eb-display mb-3" style={{ fontSize: "clamp(40px, 5vw, 64px)" }}>Thanks, your sauce is on its way.</h1>
+              {done.testMode
+                ? <p className="fs-5 text-soft mb-2">In live mode, a receipt would go to {done.email}.</p>
+                : <p className="fs-5 text-soft mb-2">Your receipt is on its way to {done.email}.</p>}
+              {done.testMode
+                ? <p className="small text-soft mb-4">Stripe payment method: {done.reference}</p>
+                : <div className="mb-4">
+                    <p className="small text-soft mb-1">{done.reference}{done.paymentIntentId && <>, payment {done.paymentIntentId}</>}</p>
+                    <div className="bg-lime rounded-4 p-3 mt-3">
+                      <div className="small fw-semibold mb-1">Your order reference</div>
+                      <div className="d-flex flex-wrap align-items-center gap-2">
+                        <code className="fs-6 text-break" style={{ color: "var(--eb-plum)" }}>{done.orderKey}</code>
+                        <CopyButton text={done.orderKey} />
+                      </div>
+                      <div className="small mt-2">Save it to check your order later. <Link to={`/orders/${done.orderKey}`} className="fw-semibold text-reset">View this order</Link></div>
+                    </div>
+                  </div>}
+              {done.testMode && (
+                <p className="small mb-4">This was a test checkout, so no card was charged.</p>
+              )}
+              <div className="d-flex flex-wrap gap-3">
+                <Link to="/" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold">Back to the home page</Link>
+                <Link to="/sauces" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Keep shopping</Link>
+              </div>
+            </div>
+            <div className="col-lg-6"><OrderSummary lines={done.lines} subtotal={done.subtotal} totals={done.totals} readOnly /></div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!lines.length) {
+    return <NotFound title="Your cart is empty." text="Add a sauce or two, then come back here to check out." />;
+  }
+
+  return (
+    <section className="eb-section" style={{ paddingTop: 48 }}>
+      <div className="container">
+        <nav aria-label="breadcrumb" className="mb-4">
+          <ol className="breadcrumb small mb-0">
+            <li className="breadcrumb-item"><Link to="/" className="text-reset">Home</Link></li>
+            <li className="breadcrumb-item"><Link to="/sauces" className="text-reset">Sauces</Link></li>
+            <li className="breadcrumb-item active text-soft" aria-current="page">Checkout</li>
+          </ol>
+        </nav>
+        <h1 className="eb-h2 mb-5">Checkout</h1>
+
+        <div className="row g-5 align-items-start">
+          {/* Left: what's in the cart */}
+          <div className="col-lg-5">
+            <div style={{ position: "sticky", top: 96 }}>
+              <OrderSummary lines={lines} subtotal={subtotal} setQty={setQty} />
+            </div>
+          </div>
+
+          {/* Right: payment form */}
+          <div className="col-lg-7">
+            {!CONFIG.ORDER_URL && (
+              <div className="rounded-4 p-3 mb-4 small border border-2" style={{ borderColor: "var(--eb-mustard)", background: "#FFF6DC" }}>
+                <strong>Test mode.</strong> No card will be charged. Use card number 4242 4242 4242 4242 with any future date and any 3-digit CVC.
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} noValidate>
+              <h2 className="h5 fw-bold mb-3">Contact</h2>
+              <div className="mb-4">
+                <Field label="Email" id="eb-co-email" type="email" autoComplete="email" placeholder="you@email.com"
+                  value={form.email} onChange={set("email")} error={errors.email} />
+              </div>
+
+              <h2 className="h5 fw-bold mb-3">Shipping address</h2>
+              <div className="row g-3 mb-4">
+                <div className="col-12"><Field label="Full name" id="eb-co-name" autoComplete="name" value={form.name} onChange={set("name")} error={errors.name} /></div>
+                <div className="col-12"><Field label="Street address" id="eb-co-address" autoComplete="address-line1" value={form.address} onChange={set("address")} error={errors.address} /></div>
+                <div className="col-12"><Field label="Apartment, suite, etc. (optional)" id="eb-co-address2" autoComplete="address-line2" value={form.address2} onChange={set("address2")} /></div>
+                <div className="col-md-5"><Field label="City" id="eb-co-city" autoComplete="address-level2" value={form.city} onChange={set("city")} error={errors.city} /></div>
+                <div className="col-6 col-md-3"><Field label="State" id="eb-co-state" autoComplete="address-level1" placeholder="TX" value={form.state} onChange={set("state")} error={errors.state} /></div>
+                <div className="col-6 col-md-4"><Field label="ZIP code" id="eb-co-zip" autoComplete="postal-code" inputMode="numeric" value={form.zip} onChange={set("zip")} error={errors.zip} /></div>
+              </div>
+
+              <h2 className="h5 fw-bold mb-3">Payment</h2>
+              <div className="mb-2">
+                <label className="form-label small fw-semibold mb-1">Card</label>
+                <div ref={cardRef} className={`form-control form-control-lg bg-paper ${cardState.error ? "is-invalid" : ""}`}
+                  style={{ borderRadius: 14, paddingTop: 14, paddingBottom: 14, minHeight: 54 }} />
+                {cardState.error && <div className="invalid-feedback d-block">{cardState.error}</div>}
+                {stripeError && <div className="small mt-2" style={{ color: "var(--eb-chili)" }}>{stripeError}</div>}
+              </div>
+              <p className="small text-soft mb-4">Payments are processed securely by Stripe. Card details never touch this site.</p>
+
+              {payError && <div className="alert alert-danger rounded-4 small" role="alert">{payError}</div>}
+
+              <button type="submit" className="btn btn-plum btn-lg rounded-pill w-100 fw-semibold py-3" disabled={processing || !stripe}>
+                {processing
+                  ? <><span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />Processing payment</>
+                  : `Pay ${money(total)}`}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- order lookup ---------- */
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1800); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => {});
+    else {
+      const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) {} document.body.removeChild(ta);
+    }
+  }
+  return <button type="button" className="btn btn-sm btn-outline-plum rounded-pill px-3" onClick={copy}>{copied ? "Copied" : "Copy"}</button>;
+}
+
+const centsToMoney = (c) => money((Number(c) || 0) / 100);
+const fmtDate = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+};
+
+// The server may leave status "pending" after a successful payment, so payment_status decides "Paid"
+function orderBadge(order) {
+  const st = (order.status || "").toLowerCase();
+  const pay = (order.payment_status || "").toLowerCase();
+  if (st === "refunded" || pay === "refunded") return { label: "Refunded", bg: "#F1E6F0" };
+  if (st === "canceled") return { label: "Canceled", bg: "#EDE8E3" };
+  if (st === "paid" || pay === "succeeded") return { label: "Paid", bg: "var(--eb-lime)" };
+  if (pay === "failed" || st === "failed") return { label: "Payment failed", bg: "#FBE3D2" };
+  return { label: "Awaiting payment", bg: "#FFF6DC" };
+}
+
+// GET the order. Result: { status: "idle" | "loading" | "found" | "notfound" | "unpaid" | "error", data }
+function useOrderLookup(orderKey) {
+  const [state, setState] = useState({ status: "idle", data: null });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!orderKey) { setState({ status: "idle", data: null }); return; }
+    if (!UUID_RE.test(orderKey)) { setState({ status: "notfound", data: null }); return; }
+    let cancelled = false;
+    setState({ status: "loading", data: null });
+    const url = CONFIG.ORDER_LOOKUP_URL.replace(":order_key", encodeURIComponent(orderKey));
+    clog("Order lookup GET →", url);
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then(async (res) => {
+        const raw = await res.text();
+        clog(`Order lookup ← HTTP ${res.status}`, raw);
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch (e) { /* not JSON */ }
+        if (cancelled) return;
+        if (data && data.order) setState({ status: "found", data });
+        else if (data && (data.payment_status || /payment not completed/i.test(data.error || ""))) setState({ status: "unpaid", data });
+        else if (res.status === 404 || (data && /not found/i.test(data.error || ""))) setState({ status: "notfound", data });
+        else throw new Error("HTTP " + res.status);
+      })
+      .catch((err) => { if (!cancelled) { cerr("Order lookup failed:", err); setState({ status: "error", data: null }); } });
+    return () => { cancelled = true; };
+  }, [orderKey, attempt]);
+  return { ...state, retry: () => setAttempt((a) => a + 1) };
+}
+
+function OrderDetails({ data, known }) {
+  const o = data.order;
+  const items = data.items || [];
+  const badge = orderBadge(o);
+  const findSauce = (it) => known.find((k) => k.dbId === String(it.hot_sauce_id) || k.id === it.sauce_slug);
+  const address = [o.shipping_line1, o.shipping_line2, `${o.shipping_city}, ${o.shipping_state} ${o.shipping_postal_code}`, o.shipping_country]
+    .filter(Boolean);
+  const count = items.reduce((n, it) => n + (Number(it.quantity) || 0), 0);
+
+  return (
+    <div className="row g-5 align-items-start">
+      <div className="col-lg-7">
+        <div className="d-flex flex-wrap align-items-center gap-3 mb-2">
+          <h2 className="eb-h2 mb-0" style={{ fontSize: "clamp(32px, 4vw, 48px)" }}>Order #{o.id}</h2>
+          <span className="rounded-pill px-3 py-1 fw-semibold small" style={{ background: badge.bg, color: "var(--eb-plum)" }}>{badge.label}</span>
+        </div>
+        <p className="text-soft mb-4">Placed {fmtDate(o.created_at)}{o.paid_at && <><br />Paid {fmtDate(o.paid_at)}</>}</p>
+
+        <h3 className="h5 fw-bold mb-2">Items ({count})</h3>
+        <ul className="list-unstyled mb-4">
+          {items.map((it) => {
+            const s = findSauce(it);
+            const color = s ? s.color : "#C8321F";
+            const bg = s ? s.bg : "#FBE3D2";
+            return (
+              <li key={it.id} className="d-flex align-items-center gap-3 py-3 border-bottom" style={{ borderColor: "#E6DCC7" }}>
+                <div className="eb-img-box rounded-3 p-1 flex-shrink-0" style={{ width: 56, height: 72, background: bg }}>
+                  <img src={s ? imgFor(s) : bottleSrc(color)} alt="" />
+                </div>
+                <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                  <Link to={`/sauce/${encodeURIComponent(it.hot_sauce_id)}`} className="fw-semibold text-reset text-decoration-none">{it.sauce_name}</Link>
+                  <div className="small text-soft">{it.quantity} × {centsToMoney(it.unit_price_cents)}</div>
+                </div>
+                <div className="fw-semibold">{centsToMoney(it.line_total_cents)}</div>
+              </li>
+            );
+          })}
+        </ul>
+
+        <dl className="mb-0" style={{ maxWidth: 420, marginLeft: "auto" }}>
+          <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Subtotal</dt><dd className="mb-0">{centsToMoney(o.subtotal_cents)}</dd></div>
+          <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Shipping</dt><dd className="mb-0">{Number(o.shipping_cents) ? centsToMoney(o.shipping_cents) : "Free"}</dd></div>
+          {Number(o.tax_cents) > 0 && <div className="d-flex justify-content-between py-1"><dt className="fw-normal">Tax</dt><dd className="mb-0">{centsToMoney(o.tax_cents)}</dd></div>}
+          <div className="d-flex justify-content-between pt-3 mt-2 border-top border-2 fs-5 fw-bold" style={{ borderColor: "var(--eb-plum)" }}>
+            <dt>Total</dt><dd className="mb-0">{centsToMoney(o.total_cents)} <span className="small fw-normal text-soft">{o.currency}</span></dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="col-lg-5">
+        <div className="bg-lime rounded-5 p-4 p-lg-5">
+          <h3 className="h6 fw-bold mb-2">Ship to</h3>
+          <address className="mb-4" style={{ textTransform: "capitalize" }}>
+            {o.customer_name}<br />
+            {address.map((line, i) => <React.Fragment key={i}>{line}<br /></React.Fragment>)}
+          </address>
+
+          <h3 className="h6 fw-bold mb-2">Contact</h3>
+          <p className="mb-4 text-break">{o.customer_email}</p>
+
+          <h3 className="h6 fw-bold mb-2">Payment</h3>
+          <p className="mb-1">{badge.label}{o.amount_received_cents != null && Number(o.amount_received_cents) > 0 && <>: {centsToMoney(o.amount_received_cents)} received</>}</p>
+          {o.last_payment_error && <p className="small mb-1" style={{ color: "var(--eb-chili)" }}>{o.last_payment_error}</p>}
+          {o.stripe_payment_intent_id && <p className="small text-soft mb-4 text-break">Stripe reference: {o.stripe_payment_intent_id}</p>}
+
+          <h3 className="h6 fw-bold mb-2">Order reference</h3>
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <code className="text-break" style={{ color: "var(--eb-plum)" }}>{o.order_key}</code>
+            <CopyButton text={o.order_key} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrdersPage({ known }) {
+  const { orderKey: keyParam } = useParams();
+  const navigate = useNavigate();
+  const orderKey = (keyParam || "").trim().toLowerCase();
+  const [input, setInput] = useState(orderKey);
+  const [inputError, setInputError] = useState("");
+  useEffect(() => { setInput(orderKey); }, [orderKey]);
+  const { status, data, retry } = useOrderLookup(orderKey);
+
+  function submit(e) {
+    e.preventDefault();
+    const key = input.trim().toLowerCase();
+    if (!key) { setInputError("Enter your order reference."); return; }
+    if (!UUID_RE.test(key)) {
+      setInputError("That doesn't look like an order reference. It should look like 53264ed2-2ff6-492d-8420-4cc96ddba6e2.");
+      return;
+    }
+    setInputError("");
+    if (key === orderKey) retry(); else navigate(`/orders/${key}`);
+  }
+
+  return (
+    <>
+      <section className="bg-mustard" style={{ padding: "64px 0 56px" }}>
+        <div className="container">
+          <h1 className="eb-display mb-3" style={{ fontSize: "clamp(44px, 6vw, 80px)" }}>Track your order</h1>
+          <p className="fs-5 text-soft mb-4" style={{ maxWidth: "46ch" }}>Enter the order reference from your confirmation page to see your order and its payment status.</p>
+          <form onSubmit={submit} noValidate style={{ maxWidth: 720 }}>
+            <label htmlFor="eb-order-ref" className="form-label small fw-semibold">Order reference</label>
+            <div className="d-flex flex-wrap gap-2">
+              <input id="eb-order-ref" type="text" spellCheck="false" autoComplete="off" autoCapitalize="off"
+                className={`form-control form-control-lg rounded-pill border-2 bg-paper flex-grow-1 font-monospace ${inputError ? "is-invalid" : ""}`}
+                style={{ borderColor: "var(--eb-plum)", minWidth: 260, width: "auto", height: 60, fontSize: 16 }}
+                placeholder="e.g. 53264ed2-2ff6-492d-8420-4cc96ddba6e2"
+                value={input} onChange={(e) => { setInput(e.target.value); if (inputError) setInputError(""); }} />
+              <button type="submit" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold" style={{ height: 60 }} disabled={status === "loading"}>
+                {status === "loading" ? <><span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />Looking up</> : "Find order"}
+              </button>
+            </div>
+            {inputError && <div className="small mt-2 fw-semibold" style={{ color: "var(--eb-chili)" }} role="alert">{inputError}</div>}
+          </form>
+        </div>
+      </section>
+
+      <section className="eb-section" style={{ paddingTop: 56 }} aria-live="polite">
+        <div className="container">
+          {status === "idle" && (
+            <p className="text-soft mb-0">Your reference is on the confirmation page after checkout. It's a long code made of letters, numbers, and dashes.</p>
+          )}
+          {status === "loading" && (
+            <div className="placeholder-glow" aria-busy="true">
+              <div className="placeholder col-4 mb-3" style={{ height: 44 }} /><div className="placeholder col-3 mb-4" />
+              <div className="placeholder col-12 mb-2" style={{ height: 72 }} /><div className="placeholder col-12" style={{ height: 72 }} />
+            </div>
+          )}
+          {status === "found" && <OrderDetails data={data} known={known} />}
+          {status === "notfound" && (
+            <div className="text-center py-4">
+              <h2 className="eb-h2 mx-auto mb-3">We couldn't find that order.</h2>
+              <p className="text-soft mx-auto mb-0" style={{ maxWidth: "48ch" }}>Check that the reference matches the one on your confirmation page, including the dashes, then try again.</p>
+            </div>
+          )}
+          {status === "unpaid" && (
+            <div className="text-center py-4">
+              <h2 className="eb-h2 mx-auto mb-3">This order wasn't paid.</h2>
+              <p className="text-soft mx-auto mb-4" style={{ maxWidth: "48ch" }}>
+                We found the order, but its payment didn't go through{data && data.payment_status ? ` (status: ${data.payment_status})` : ""}, so nothing was charged and it won't ship.
+              </p>
+              <Link to="/sauces" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold">Shop again</Link>
+            </div>
+          )}
+          {status === "error" && (
+            <div className="text-center py-4">
+              <h2 className="eb-h2 mx-auto mb-3">We couldn't look up your order.</h2>
+              <p className="text-soft mb-4">Check your connection and try again.</p>
+              <button className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold" onClick={retry}>Try again</button>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* ---------- static sections ---------- */
+function Process() {
+  const steps = [
+    ["Ferment", "Fresh peppers, garlic, and sea salt sit in brine for weeks until they turn tangy and deep."],
+    ["Blend", "We blend each batch with fruit or smoked chiles, then taste and adjust by hand."],
+    ["Bottle", "Batches of 200 bottles are filled, sealed, and shipped within a week."]
+  ];
+  return (
+    <section className="eb-section bg-plum text-white" id="eb-how">
+      <div className="container">
+        <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-5">
+          <h2 className="eb-h2 mb-0" style={{ color: "var(--eb-paper)" }}>Slow sauce takes 30 days</h2>
+          <p className="text-muted-plum mb-0" style={{ maxWidth: "42ch" }}>No vinegar shortcuts. Fermentation builds the flavor, so the heat has something to stand on.</p>
+        </div>
+        <div className="row g-5">
+          {steps.map(([title, text], i) => (
+            <div className="col-md-4 border-top border-2 pt-4" style={{ borderColor: "var(--eb-mustard)" }} key={title}>
+              <div className="eb-step-num text-mustard mb-3">{i + 1}</div>
+              <h3 className="h4 fw-bold">{title}</h3>
+              <p className="text-muted-plum">{text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Reviews() {
+  const reviews = [
+    { quote: "I bought Sunday Mango for tacos and now it goes on eggs, pizza, and popcorn. Third bottle this month.", who: "Dana R., Portland", col: "col-lg-6", bg: "var(--eb-lime)", big: true },
+    { quote: "Green Hour is the first hot sauce my kids will eat.", who: "Marcus T., Denver", col: "col-md-6 col-lg-3", bg: "#FBE3D2" },
+    { quote: "Night Shift is properly hot, but you can still taste the garlic.", who: "Priya K., Chicago", col: "col-md-6 col-lg-3", bg: "#F1E6F0" }
+  ];
+  return (
+    <section className="eb-section" id="eb-reviews">
+      <div className="container">
+        <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-5">
+          <h2 className="eb-h2 mb-0">What people put it on</h2>
+          <p className="text-soft mb-0">4.9 average from 2,300+ reviews.</p>
+        </div>
+        <div className="row g-4">
+          {reviews.map((r) => (
+            <div className={r.col} key={r.who}>
+              <figure className="h-100 m-0 rounded-5 p-4 p-lg-5 d-flex flex-column justify-content-between gap-4" style={{ background: r.bg }}>
+                <blockquote className={`${r.big ? "fs-3 fw-semibold" : "fs-5"} lh-sm mb-0`}>{r.quote}</blockquote>
+                <figcaption className="small text-soft"><span className="text-danger" aria-label="5 stars">★★★★★</span><br />{r.who}</figcaption>
+              </figure>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Bundle({ onAddBundle }) {
+  return (
+    <section className="eb-section pt-0" id="eb-bundle">
+      <div className="container">
+        <div className="bg-chili rounded-5 p-5 text-white">
+          <div className="row g-4 align-items-center p-lg-4">
+            <div className="col-lg">
+              <h2 className="eb-h2 mb-3" style={{ maxWidth: "18ch" }}>Can't pick? Get three and save 15%.</h2>
+              <p className="mb-0" style={{ color: "#FBE3D2", maxWidth: "46ch" }}>One mild, one medium, and one with a kick, picked by us from this month's batches. Ships free.</p>
+            </div>
+            <div className="col-lg-auto">
+              <button className="btn btn-mustard btn-lg rounded-pill px-5 fw-semibold" onClick={onAddBundle}>Add the trio for {money(CONFIG.BUNDLE.price)}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Faq() {
+  const [open, setOpen] = useState(null);
+  const items = [
+    ["How long does shipping take?", "Orders ship within 2 business days from Austin, Texas. Most arrive in 3–5 days within the US."],
+    ["Do I need to refrigerate it?", "No, but it keeps its color and flavor longer in the fridge. Use within 6 months of opening."],
+    ["Are the sauces vegan and gluten-free?", "Each product card shows whether that sauce is vegan and gluten-free. Almost all of them are."],
+    ["What if I don't like it?", "Email us within 30 days and we'll refund you or send a different sauce, your choice."]
+  ];
+  return (
+    <section className="eb-section pt-0" id="eb-faq">
+      <div className="container">
+        <h2 className="eb-h2 mb-5">Questions</h2>
+        <div className="accordion accordion-flush eb-faq" style={{ maxWidth: 780 }}>
+          {items.map(([q, a], i) => (
+            <div className="accordion-item" key={q}>
+              <h3 className="accordion-header">
+                <button className={`accordion-button px-0 ${open === i ? "" : "collapsed"}`} type="button"
+                  aria-expanded={open === i} onClick={() => setOpen(open === i ? null : i)}>{q}</button>
+              </h3>
+              <div className={`accordion-collapse collapse ${open === i ? "show" : ""}`}>
+                <div className="accordion-body px-0 text-soft">{a}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Newsletter: demo only. To capture leads in GHL, place a GHL form element in a section below this code block. */
+function Newsletter() {
+  const [email, setEmail] = useState("");
+  const [msg, setMsg] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  function submit(e) {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setInvalid(true); setMsg("Enter a valid email address, like name@example.com."); return;
+    }
+    setInvalid(false); setMsg("You're on the list. Your code is FIRSTBATCH10."); setEmail("");
+  }
+  return (
+    <section className="eb-section bg-lime">
+      <div className="container">
+        <div className="row g-4 align-items-center">
+          <div className="col-lg-6">
+            <h2 className="eb-h2 mb-3">Get 10% off your first order</h2>
+            <p className="text-soft mb-0">Join the list for new batches and recipes. One email a month.</p>
+          </div>
+          <div className="col-lg-6">
+            <form onSubmit={submit} noValidate>
+              <div className="d-flex flex-wrap gap-2">
+                <input type="email" className={`form-control form-control-lg rounded-pill border-2 bg-paper flex-grow-1 ${invalid ? "is-invalid" : ""}`}
+                  style={{ borderColor: "var(--eb-plum)", minWidth: 220, width: "auto" }} placeholder="you@email.com" aria-label="Email address"
+                  value={email} onChange={(e) => setEmail(e.target.value)} />
+                <button type="submit" className="btn btn-plum btn-lg rounded-pill px-4 fw-semibold">Get my code</button>
+              </div>
+              <p className="small mt-2 mb-0" role="status">{msg}</p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="bg-plum text-muted-plum pt-5 pb-4 small">
+      <div className="container pt-md-4">
+        <div className="row g-4">
+          <div className="col-md-6">
+            <SectionLink section="top" className="d-inline-block fw-bold fs-4 text-mustard text-decoration-none mb-2">Ember &amp; Brine</SectionLink>
+            <p>Small-batch fermented hot sauce, made in Austin since 2019.</p>
+          </div>
+          <div className="col-6 col-md-3">
+            <h4 className="fs-6 fw-bold text-white">Shop</h4>
+            <ul className="list-unstyled d-grid gap-2">
+              <li><Link className="text-reset text-decoration-none" to="/sauces">All sauces</Link></li>
+              <li><SectionLink section="eb-bundle" className="text-reset text-decoration-none">The trio</SectionLink></li>
+              <li><a className="text-reset text-decoration-none" href="mailto:hello@example.com?subject=Gift%20cards">Gift cards</a></li>
+            </ul>
+          </div>
+          <div className="col-6 col-md-3">
+            <h4 className="fs-6 fw-bold text-white">Help</h4>
+            <ul className="list-unstyled d-grid gap-2">
+              <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">FAQ</SectionLink></li>
+              <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">Shipping &amp; returns</SectionLink></li>
+              <li><Link className="text-reset text-decoration-none" to="/orders">Track your order</Link></li>
+              <li><a className="text-reset text-decoration-none" href="mailto:hello@example.com">Contact us</a></li>
+            </ul>
+          </div>
+        </div>
+        <div className="border-top mt-4 pt-3" style={{ borderColor: "#4A3347" }}>© {new Date().getFullYear()} Ember &amp; Brine. All rights reserved.</div>
+      </div>
+    </footer>
+  );
+}
+
+/* ---------- cart drawer ---------- */
+function CartDrawer({ open, onClose, lines, subtotal, count, setQty }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const left = CONFIG.FREE_SHIP_AT - subtotal;
+  function checkout() {
+    onClose();
+    navigate("/checkout");
+  }
+
+  return (
+    <>
+      <div className={`offcanvas offcanvas-end bg-paper ${open ? "show" : ""}`} tabIndex="-1" role="dialog" aria-modal="true" aria-labelledby="eb-cart-title"
+        style={{ visibility: open ? "visible" : "hidden", fontFamily: "var(--bs-body-font-family)", color: "var(--eb-plum)" }}>
+        <div className="offcanvas-header border-bottom border-2">
+          <h3 className="offcanvas-title h4 fw-bold" id="eb-cart-title">Your cart</h3>
+          <button type="button" className="btn-close" onClick={onClose} aria-label="Close cart" />
+        </div>
+        <div className="bg-lime px-4 py-3 small">
+          {left > 0 ? `Add ${money(left)} more for free shipping.` : "Your order ships free."}
+          <div className="progress mt-2 bg-paper" style={{ height: 8 }}>
+            <div className="progress-bar bg-plum" style={{ width: Math.min(100, (subtotal / CONFIG.FREE_SHIP_AT) * 100) + "%" }} />
+          </div>
+        </div>
+        <div className="offcanvas-body py-2">
+          {lines.length === 0 ? (
+            <div className="text-center text-soft py-5">
+              <p>Your cart is empty.</p>
+              <Link to="/sauces" className="btn btn-outline-plum rounded-pill px-4" onClick={onClose}>Browse sauces</Link>
+            </div>
+          ) : lines.map(({ p, qty }) => (
+            <div className="d-flex align-items-center gap-3 py-3 border-bottom" key={p.id}>
+              <div className="eb-img-box rounded-3 p-1 flex-shrink-0" style={{ width: 56, height: 72, background: p.bg || "#FCE9C6" }}><img src={imgFor(p)} alt="" /></div>
+              <div className="flex-grow-1"><div className="fw-semibold">{p.name}</div><div className="small text-soft">{money(p.price)}</div></div>
+              <div className="btn-group btn-group-sm" role="group">
+                <button className="btn btn-outline-plum" onClick={() => setQty(p.id, qty - 1)} aria-label={`Remove one ${p.name}`}>−</button>
+                <span className="btn btn-outline-plum disabled fw-semibold" style={{ opacity: 1 }}>{qty}</span>
+                <button className="btn btn-outline-plum" onClick={() => setQty(p.id, qty + 1)} aria-label={`Add one ${p.name}`}
+                  disabled={p.stock !== null && p.stock !== undefined && qty >= p.stock}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="border-top border-2 p-4">
+          <div className="d-flex justify-content-between fw-bold fs-5 mb-3"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          {count > 0 && <button className="btn btn-plum btn-lg rounded-pill w-100 fw-semibold" onClick={checkout}>Check out</button>}
+        </div>
+      </div>
+      {open && <div className="offcanvas-backdrop fade show" onClick={onClose} />}
+    </>
+  );
+}
+
+function Toast({ message }) {
+  return (
+    <div className="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style={{ zIndex: 1090 }}>
+      <div className={`toast align-items-center bg-plum text-white border-0 rounded-pill ${message ? "show" : ""}`} role="status" aria-live="polite">
+        <div className="toast-body fw-semibold px-4">{message}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- GHL wrapper fixes ----------
+   1) Sticky header breaks if a parent hides overflow, so reset it.
+   2) Remove side padding/margins/max-width GHL adds around this block (stops at the GHL section). */
+function useGhlWrapperFix(ref) {
+  useEffect(() => {
+    let el = ref.current && ref.current.parentElement;
+    let steps = 0;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const cs = getComputedStyle(el);
+      if (/(hidden|auto|scroll|clip)/.test(cs.overflow + cs.overflowX + cs.overflowY)) el.style.overflow = "visible";
+      if (steps < 8) {
+        ["padding-left", "padding-right", "margin-left", "margin-right"].forEach((prop) => el.style.setProperty(prop, "0", "important"));
+        el.style.setProperty("max-width", "100%", "important");
+        el.style.setProperty("width", "100%", "important");
+        if (/^section-/.test(el.id || "") || /(^|\s)(c-section|fullSection)(\s|$)/.test(el.className || "")) steps = 99;
+      }
+      el = el.parentElement; steps++;
+    }
+  }, [ref]);
+}
+
+/* ---------- app ---------- */
+function App() {
+  const rootRef = useRef(null);
+  useGhlWrapperFix(rootRef);
+
+  const { top, full, topItems, known, reloadTop, reloadAll, ensureAll } = useSauceData();
+  const sauces = known; // every sauce loaded so far, for the cart
+  const [cart, setCart] = useState(loadCart);
+  // Snapshots of sauces in the cart, so items added from the full list still show
+  // after a reload, when only the top sauces are loaded.
+  const [cartItems, setCartItems] = useState(loadCartItems);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef(null);
+
+  const byId = useCallback((id) => {
+    if (id === CONFIG.BUNDLE.id) return CONFIG.BUNDLE;
+    return sauces.find((s) => s.id === id) || cartItems[id] || null;
+  }, [sauces, cartItems]);
+
+  // Save cart
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONFIG.CART_KEY, JSON.stringify(cart));
+      const snap = {};
+      Object.keys(cart).forEach((id) => { if (cartItems[id]) snap[id] = cartItems[id]; });
+      localStorage.setItem(CONFIG.CART_ITEMS_KEY, JSON.stringify(snap));
+    } catch (e) {}
+  }, [cart, cartItems]);
+
+  // Keep cart snapshots up to date with the latest prices and stock
+  useEffect(() => {
+    if (!sauces.length) return;
+    setCartItems((ci) => {
+      const next = { ...ci };
+      sauces.forEach((s) => { if (next[s.id]) next[s.id] = s; });
+      return next;
+    });
+  }, [sauces]);
+
+  // Drop cart items that are no longer sold. Only the full list can tell us that,
+  // and items with no saved details (from an older cart) are dropped too.
+  useEffect(() => {
+    setCart((c) => {
+      const next = {};
+      Object.keys(c).forEach((id) => {
+        const inFull = full.status === "ready" ? full.all.some((s) => s.id === id) : true;
+        if (id === CONFIG.BUNDLE.id || (inFull && (cartItems[id] || sauces.some((s) => s.id === id)))) next[id] = c[id];
+      });
+      return Object.keys(next).length === Object.keys(c).length ? c : next;
+    });
+  }, [sauces, full.status]);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 2200);
+  };
+
+  const add = (id, qty = 1, product) => {
+    const p = product || byId(id);
+    if (p && id !== CONFIG.BUNDLE.id) setCartItems((ci) => ({ ...ci, [id]: p }));
+    setCart((c) => ({ ...c, [id]: (c[id] || 0) + qty }));
+    showToast(qty > 1 ? `${qty} × ${p ? p.name : "item"} added to cart` : `${p ? p.name : "Item"} added to cart`);
+  };
+  const buyNow = (id, qty, product) => { add(id, qty, product); setCartOpen(true); };
+  const setQty = (id, qty) => setCart((c) => {
+    const next = { ...c };
+    if (qty <= 0) delete next[id]; else next[id] = qty;
+    return next;
+  });
+  const closeCart = useCallback(() => setCartOpen(false), []);
+
+  const lines = Object.keys(cart).map((id) => ({ p: byId(id), qty: cart[id] })).filter((l) => l.p);
+  const count = lines.reduce((n, l) => n + l.qty, 0);
+  const subtotal = lines.reduce((n, l) => n + l.p.price * l.qty, 0);
+
+  return (
+    <div id="eb-store" ref={rootRef}>
+      <div className="bg-plum text-mustard text-center small py-2 px-3">Free shipping on orders over {money(CONFIG.FREE_SHIP_AT)}</div>
+      <ScrollManager />
+      <Header count={count} onOpenCart={() => setCartOpen(true)} />
+      <Routes>
+        <Route path="/" element={
+          <>
+            <Hero sauces={topItems} status={top.status} onAdd={add} />
+            <Shop status={top.status} bestSelling={top.bestSelling} hottest={top.hottest} reload={reloadTop} onAdd={add} />
+            <Process />
+            <Reviews />
+            <Bundle onAddBundle={() => { add(CONFIG.BUNDLE.id); setCartOpen(true); }} />
+            <Faq />
+            <Newsletter />
+          </>
+        } />
+        <Route path="/sauces" element={
+          <SaucesPage status={full.status} all={full.all} reload={reloadAll} ensureAll={ensureAll} onAdd={add} />
+        } />
+        <Route path="/sauce/:id" element={
+          <ItemPage cart={cart} onAdd={add} onBuyNow={buyNow}
+            related={uniqueSauces([top.bestSelling, top.hottest])} relatedStatus={top.status} />
+        } />
+        <Route path="/checkout" element={<CheckoutPage lines={lines} subtotal={subtotal} setQty={setQty} onPaid={() => setCart({})} />} />
+        <Route path="/orders" element={<OrdersPage known={known} />} />
+        <Route path="/orders/:orderKey" element={<OrdersPage known={known} />} />
+        <Route path="*" element={<NotFound title="This page doesn't exist." text="The link may be old or mistyped." />} />
+      </Routes>
+      <Footer />
+      <CartDrawer open={cartOpen} onClose={closeCart} lines={lines} subtotal={subtotal} count={count} setQty={setQty} />
+      <Toast message={toast} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("eb-root")).render(
+  <HashRouter>
+    <App />
+  </HashRouter>
+);
+</script>
