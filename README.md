@@ -103,6 +103,34 @@ Returns `{ …sauce object… }` or `{ "data": { …sauce object… } }`. A `404
 | `is_gluten_free` | boolean | |
 | `is_active` | boolean | `false` rows are filtered out |
 
+## Database Schema
+
+Table: `hotsauce` (PostgreSQL)
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | `BIGINT` | `PRIMARY KEY`, `GENERATED ALWAYS AS IDENTITY` |
+| `slug` | `TEXT` | `UNIQUE NOT NULL` |
+| `name` | `TEXT` | `NOT NULL` |
+| `description` | `TEXT` | |
+| `main_peppers` | `TEXT[]` | `NOT NULL DEFAULT '{}'` |
+| `ingredients` | `TEXT` | |
+| `heat_level` | `SMALLINT` | `NOT NULL` |
+| `price_cents` | `INTEGER` | `NOT NULL` |
+| `currency` | `CHAR(3)` | `NOT NULL DEFAULT 'USD'` |
+| `size_oz` | `NUMERIC(5,2)` | `NOT NULL DEFAULT 5.00` |
+| `stock_qty` | `INTEGER` | `NOT NULL DEFAULT 0` |
+| `is_vegan` | `BOOLEAN` | `NOT NULL DEFAULT true` |
+| `is_gluten_free` | `BOOLEAN` | `NOT NULL DEFAULT true` |
+| `ferment_days` | `SMALLINT` | |
+| `color_hex` | `CHAR(7)` | |
+| `bg_hex` | `CHAR(7)` | |
+| `image_url` | `TEXT` | |
+| `buy_url` | `TEXT` | |
+| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT true` |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | `NOT NULL DEFAULT now()` |
+| `updated_at` | `TIMESTAMP WITH TIME ZONE` | `NOT NULL DEFAULT now()` |
+
 ### `POST ORDER_URL` — Place order
 See the `handleSubmit` comment in the `CheckoutPage` component for the exact request shape and expected responses (`{ success, order_key, client_secret, … }`).
 
