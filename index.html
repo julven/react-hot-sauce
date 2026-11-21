@@ -6,7 +6,7 @@
     yourpage#/          → home: best sellers, hottest, heat picker, reviews, FAQ
     yourpage#/sauces    → all sauces with search and heat filter
                            (search is kept in the link, e.g. #/sauces?q=ghost&heat=5)
-    yourpage#/sauce/1   → one sauce: full details, quantity, and total price
+    yourpage#/sauce/1   → one sauce: full details, Fquantity, and total price
                            (loaded from ITEM_URL; unknown ids show a "not found" page)
     yourpage#/checkout  → order summary (left) + Stripe card form (right), test mode by default
     yourpage#/orders    → track an order by its reference (order_key), e.g. #/orders/53264ed2-...
@@ -87,9 +87,9 @@
   .eb-swap { animation: eb-pop .35s ease; }
   @keyframes eb-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  /* Product images: always contained in their box */
-  .eb-img-box { display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .eb-img-box img { height: 100% !important; width: auto !important; max-width: 100% !important; object-fit: contain; }
+  /* Product images: fill the box */
+  .eb-img-box { display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+  .eb-img-box img { width: 100% !important; height: 100% !important; max-width: 100% !important; object-fit: cover; }
 
   /* Heat marks */
   .eb-heat i { display: inline-block; width: 10px; height: 16px; margin-right: 3px; border-radius: 50% / 60% 60% 40% 40%; background: #E6DCC7; }
@@ -172,7 +172,32 @@ function bottleSrc(color) {
     <path d="M30 60c-2 6-2 14-2 20v100" stroke="#fff" stroke-opacity=".35" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
-const imgFor = (p) => p.image || bottleSrc(p.color);
+function resolveImg(url) {
+  if (!url) return null;
+  const m = url.match(/\/file\/d\/([^/?#]+)/);
+  return m ? `https://lh3.googleusercontent.com/d/${m[1]}` : url;
+}
+const imgFor = (p) => resolveImg(p.image) || bottleSrc(p.color);
+
+function SauceImg({ src, alt, bg, loading }) {
+  const [loaded, setLoaded] = useState(false);
+  const isSvg = src && src.startsWith("data:");
+  const show = loaded || isSvg;
+  return (
+    <>
+      {!show && (
+        <div className="placeholder-glow" aria-hidden="true"
+          style={{ position: "absolute", inset: 0, background: bg || "#E6DCC7", borderRadius: "inherit" }}>
+          <div className="placeholder w-100 h-100" style={{ background: bg || "#E6DCC7" }} />
+        </div>
+      )}
+      <img src={src} alt={alt} loading={loading}
+        style={{ opacity: show ? 1 : 0, transition: show ? "opacity .3s ease" : "none" }}
+        onLoad={() => setLoaded(true)} />
+    </>
+  );
+}
+
 const itemPath = (p) => `/sauce/${encodeURIComponent(p.dbId)}`;
 const HEAT_LABELS = ["", "Mild", "Medium", "Hot", "Very hot", "Extreme"];
 const isSoldOut = (p) => p.stock !== null && p.stock !== undefined && p.stock <= 0;
@@ -324,7 +349,10 @@ function Header({ count, onOpenCart }) {
   return (
     <nav className={`navbar navbar-expand-md bg-mustard sticky-top eb-nav ${scrolled ? "eb-scrolled" : ""}`}>
       <div className="container eb-bar">
-        <SectionLink section="top" className="navbar-brand text-reset" onClick={close}>Ember &amp; Brine</SectionLink>
+        <SectionLink section="top" className="navbar-brand text-reset d-flex align-items-center gap-2" onClick={close}>
+          <img src="https://lh3.googleusercontent.com/d/1KeJ6UWa7oa3pybOM0jsU-fNXsNCGWg4e" alt="" aria-hidden="true" style={{ width: 32, height: 32, objectFit: "contain", flexShrink: 0 }} />
+          <span className="d-none d-md-inline">Ember &amp; Brine</span>
+        </SectionLink>
         <div className="d-flex align-items-center gap-2 order-md-last">
           <button className="btn bg-paper rounded-pill fw-semibold d-flex align-items-center gap-2" onClick={onOpenCart} aria-label="Open cart">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7z" /><path d="M9 7a3 3 0 0 1 6 0" /></svg>
@@ -354,21 +382,28 @@ function Header({ count, onOpenCart }) {
 }
 
 /* ---------- heat picker ---------- */
-function HeatPicker({ sauces, status, onAdd }) {
+function HeatPicker({ onAdd }) {
   const [level, setLevel] = useState(2);
-  const [index, setIndex] = useState(0);
   const [animKey, setAnimKey] = useState(0);
+  const [allSauces, setAllSauces] = useState([]);
+  const [status, setStatus] = useState("loading");
 
-  const matches = useMemo(() => {
-    if (!sauces.length) return [];
-    const nearest = sauces.reduce((best, s) => (Math.abs(s.heat - level) < Math.abs(best - level) ? s.heat : best), sauces[0].heat);
-    return sauces.filter((s) => s.heat === nearest);
-  }, [sauces, level]);
+  useEffect(() => {
+    setStatus("loading");
+    fetchAll()
+      .then((data) => { setAllSauces(data); setStatus("ready"); })
+      .catch(() => setStatus("error"));
+  }, []);
 
-  useEffect(() => { setIndex(0); }, [level]);
-  useEffect(() => { setAnimKey((k) => k + 1); }, [level, index]);
+  const perLevel = useMemo(() => {
+    const map = {};
+    allSauces.forEach((s) => { if (!map[s.heat]) map[s.heat] = s; });
+    return map;
+  }, [allSauces]);
 
-  const p = matches.length ? matches[index % matches.length] : null;
+  useEffect(() => { setAnimKey((k) => k + 1); }, [level]);
+
+  const p = perLevel[level] || null;
 
   return (
     <div className="bg-paper rounded-5 p-4 p-lg-5 eb-picker" aria-live="polite">
@@ -383,10 +418,10 @@ function HeatPicker({ sauces, status, onAdd }) {
         <p className="text-soft small mb-0 placeholder-glow"><span className="placeholder col-10" /><span className="placeholder col-7" /></p>
       )}
       {status === "error" && <p className="text-soft small mb-0">Sauce suggestions will show once the lineup loads.</p>}
-      {status === "ready" && !p && <p className="text-soft small mb-0">No sauces are available right now.</p>}
+      {status === "ready" && !p && <p className="text-soft small mb-0">No sauces at this heat level right now.</p>}
       {p && (
         <div className="d-flex gap-3 align-items-center eb-swap" key={animKey}>
-          <div className="eb-img-box flex-shrink-0" style={{ width: 80, height: 150 }}><img src={imgFor(p)} alt={`${p.name} bottle`} /></div>
+          <div className="eb-img-box flex-shrink-0" style={{ width: 80, height: 150 }}><SauceImg src={imgFor(p)} alt={`${p.name} bottle`} bg={p.bg} /></div>
           <div style={{ minWidth: 0 }}>
             <p className="fw-bold fs-3 lh-1 mb-2"><Link to={itemPath(p)} className="text-reset text-decoration-none">{p.name}</Link></p>
             <p className="small text-soft mb-3">{p.desc}</p>
@@ -394,11 +429,6 @@ function HeatPicker({ sauces, status, onAdd }) {
               <HeatMarks level={p.heat} /><strong>{money(p.price)}</strong>
               <BuyButton product={p} onAdd={onAdd} className="btn-sm px-3" />
             </div>
-            {matches.length > 1 && (
-              <button className="btn btn-link btn-sm p-0 mt-2 text-reset" onClick={() => setIndex(index + 1)}>
-                Show another at this heat ({(index % matches.length) + 1} of {matches.length})
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -416,10 +446,9 @@ function Hero(props) {
             <p className="fs-5 text-soft mb-4" style={{ maxWidth: "30ch" }}>Small-batch sauces made with real peppers, fermented for weeks and bottled by hand in Austin.</p>
             <div className="d-flex flex-wrap gap-3">
               <Link to="/sauces" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold">Shop all sauces</Link>
-              <SectionLink section="eb-bundle" className="btn btn-outline-plum btn-lg rounded-pill px-5 fw-semibold">Try the trio</SectionLink>
             </div>
           </div>
-          <div className="col-lg-5"><HeatPicker {...props} /></div>
+          <div className="col-lg-5"><HeatPicker onAdd={props.onAdd} /></div>
         </div>
       </div>
     </section>
@@ -432,8 +461,8 @@ function ProductCard({ p, onAdd }) {
   return (
     <div className="col">
       <div className="d-flex flex-column h-100">
-        <Link to={itemPath(p)} className="eb-img-box rounded-5 p-4 d-flex" style={{ height: 280, background: p.bg }} aria-label={`View ${p.name}`}>
-          <img src={imgFor(p)} alt={`${p.name} hot sauce bottle`} loading="lazy" />
+        <Link to={itemPath(p)} className="eb-img-box rounded-5 d-flex" style={{ height: 280, background: p.bg }} aria-label={`View ${p.name}`}>
+          <SauceImg src={imgFor(p)} alt={`${p.name} hot sauce bottle`} bg={p.bg} loading="lazy" />
         </Link>
         <div className="d-flex flex-column flex-grow-1 gap-2 pt-3 px-1">
           <div className="d-flex justify-content-between align-items-baseline gap-2">
@@ -774,8 +803,8 @@ function ItemPage({ cart, onAdd, onBuyNow, related, relatedStatus }) {
 
         <div className="row g-5 align-items-start">
           <div className="col-lg-6">
-            <div className="eb-img-box rounded-5 p-5" style={{ height: "min(560px, 80vw)", background: p.bg }}>
-              <img src={imgFor(p)} alt={`${p.name} hot sauce bottle`} />
+            <div className="eb-img-box rounded-5" style={{ height: "min(560px, 80vw)", background: p.bg }}>
+              <SauceImg src={imgFor(p)} alt={`${p.name} hot sauce bottle`} bg={p.bg} />
             </div>
           </div>
 
@@ -914,7 +943,7 @@ function OrderSummary({ lines, subtotal: cartSubtotal, setQty, readOnly, totals 
         {lines.map(({ p, qty }) => (
           <li className="d-flex align-items-center gap-3 py-3 border-bottom" style={{ borderColor: "rgba(46,26,43,.15)" }} key={p.id}>
             <div className="position-relative flex-shrink-0">
-              <div className="eb-img-box rounded-3 p-1 bg-paper" style={{ width: 60, height: 76 }}><img src={imgFor(p)} alt="" /></div>
+              <div className="eb-img-box rounded-3" style={{ width: 60, height: 76, background: p.bg || "#FBE3D2" }}><SauceImg src={imgFor(p)} alt="" bg={p.bg} /></div>
               <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-plum">{qty}</span>
             </div>
             <div className="flex-grow-1" style={{ minWidth: 0 }}>
@@ -1392,7 +1421,7 @@ function OrderDetails({ data, known }) {
             return (
               <li key={it.id} className="d-flex align-items-center gap-3 py-3 border-bottom" style={{ borderColor: "#E6DCC7" }}>
                 <div className="eb-img-box rounded-3 p-1 flex-shrink-0" style={{ width: 56, height: 72, background: bg }}>
-                  <img src={s ? imgFor(s) : bottleSrc(color)} alt="" />
+                  <SauceImg src={s ? imgFor(s) : bottleSrc(color)} alt="" bg={bg} />
                 </div>
                 <div className="flex-grow-1" style={{ minWidth: 0 }}>
                   <Link to={`/sauce/${encodeURIComponent(it.hot_sauce_id)}`} className="fw-semibold text-reset text-decoration-none">{it.sauce_name}</Link>
@@ -1581,25 +1610,6 @@ function Reviews() {
   );
 }
 
-function Bundle({ onAddBundle }) {
-  return (
-    <section className="eb-section pt-0" id="eb-bundle">
-      <div className="container">
-        <div className="bg-chili rounded-5 p-5 text-white">
-          <div className="row g-4 align-items-center p-lg-4">
-            <div className="col-lg">
-              <h2 className="eb-h2 mb-3" style={{ maxWidth: "18ch" }}>Can't pick? Get three and save 15%.</h2>
-              <p className="mb-0" style={{ color: "#FBE3D2", maxWidth: "46ch" }}>One mild, one medium, and one with a kick, picked by us from this month's batches. Ships free.</p>
-            </div>
-            <div className="col-lg-auto">
-              <button className="btn btn-mustard btn-lg rounded-pill px-5 fw-semibold" onClick={onAddBundle}>Add the trio for {money(CONFIG.BUNDLE.price)}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function Faq() {
   const [open, setOpen] = useState(null);
@@ -1631,42 +1641,6 @@ function Faq() {
   );
 }
 
-/* Newsletter: demo only. To capture leads in GHL, place a GHL form element in a section below this code block. */
-function Newsletter() {
-  const [email, setEmail] = useState("");
-  const [msg, setMsg] = useState("");
-  const [invalid, setInvalid] = useState(false);
-  function submit(e) {
-    e.preventDefault();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setInvalid(true); setMsg("Enter a valid email address, like name@example.com."); return;
-    }
-    setInvalid(false); setMsg("You're on the list. Your code is FIRSTBATCH10."); setEmail("");
-  }
-  return (
-    <section className="eb-section bg-lime">
-      <div className="container">
-        <div className="row g-4 align-items-center">
-          <div className="col-lg-6">
-            <h2 className="eb-h2 mb-3">Get 10% off your first order</h2>
-            <p className="text-soft mb-0">Join the list for new batches and recipes. One email a month.</p>
-          </div>
-          <div className="col-lg-6">
-            <form onSubmit={submit} noValidate>
-              <div className="d-flex flex-wrap gap-2">
-                <input type="email" className={`form-control form-control-lg rounded-pill border-2 bg-paper flex-grow-1 ${invalid ? "is-invalid" : ""}`}
-                  style={{ borderColor: "var(--eb-plum)", minWidth: 220, width: "auto" }} placeholder="you@email.com" aria-label="Email address"
-                  value={email} onChange={(e) => setEmail(e.target.value)} />
-                <button type="submit" className="btn btn-plum btn-lg rounded-pill px-4 fw-semibold">Get my code</button>
-              </div>
-              <p className="small mt-2 mb-0" role="status">{msg}</p>
-            </form>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function Footer() {
   return (
@@ -1681,7 +1655,6 @@ function Footer() {
             <h4 className="fs-6 fw-bold text-white">Shop</h4>
             <ul className="list-unstyled d-grid gap-2">
               <li><Link className="text-reset text-decoration-none" to="/sauces">All sauces</Link></li>
-              <li><SectionLink section="eb-bundle" className="text-reset text-decoration-none">The trio</SectionLink></li>
               <li><a className="text-reset text-decoration-none" href="mailto:hello@example.com?subject=Gift%20cards">Gift cards</a></li>
             </ul>
           </div>
@@ -1739,7 +1712,7 @@ function CartDrawer({ open, onClose, lines, subtotal, count, setQty }) {
             </div>
           ) : lines.map(({ p, qty }) => (
             <div className="d-flex align-items-center gap-3 py-3 border-bottom" key={p.id}>
-              <div className="eb-img-box rounded-3 p-1 flex-shrink-0" style={{ width: 56, height: 72, background: p.bg || "#FCE9C6" }}><img src={imgFor(p)} alt="" /></div>
+              <div className="eb-img-box rounded-3 flex-shrink-0" style={{ width: 56, height: 72, background: p.bg || "#FCE9C6" }}><SauceImg src={imgFor(p)} alt="" bg={p.bg || "#FCE9C6"} /></div>
               <div className="flex-grow-1"><div className="fw-semibold">{p.name}</div><div className="small text-soft">{money(p.price)}</div></div>
               <div className="btn-group btn-group-sm" role="group">
                 <button className="btn btn-outline-plum" onClick={() => setQty(p.id, qty - 1)} aria-label={`Remove one ${p.name}`}>−</button>
@@ -1880,9 +1853,7 @@ function App() {
             <Shop status={top.status} bestSelling={top.bestSelling} hottest={top.hottest} reload={reloadTop} onAdd={add} />
             <Process />
             <Reviews />
-            <Bundle onAddBundle={() => { add(CONFIG.BUNDLE.id); setCartOpen(true); }} />
             <Faq />
-            <Newsletter />
           </>
         } />
         <Route path="/sauces" element={
