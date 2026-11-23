@@ -786,6 +786,48 @@
     const [qty, setQty] = useState(1);
     useEffect(() => { setQty(1); }, [id]);
 
+    useEffect(() => {
+      if (!p) return;
+      const prevTitle = document.title;
+      const img = resolveImg(p.image) || "";
+      const desc = p.desc || `${p.name} hot sauce from Ember & Brine`;
+      const title = `${p.name} — Ember & Brine`;
+
+      const upsert = (selector, attr, value) => {
+        let el = document.querySelector(selector);
+        const created = !el;
+        if (created) {
+          el = document.createElement("meta");
+          const m = selector.match(/\[(\w[^=]*)="([^"]+)"\]/);
+          if (m) el.setAttribute(m[1], m[2]);
+          document.head.appendChild(el);
+        }
+        const old = el.getAttribute(attr);
+        el.setAttribute(attr, value);
+        return () => { if (created) el.remove(); else if (old != null) el.setAttribute(attr, old); else el.removeAttribute(attr); };
+      };
+
+      document.title = title;
+      const cleanups = [
+        upsert('meta[name="description"]',          "content", desc),
+        upsert('meta[property="og:type"]',          "content", "product"),
+        upsert('meta[property="og:title"]',         "content", title),
+        upsert('meta[property="og:description"]',   "content", desc),
+        upsert('meta[name="twitter:card"]',         "content", "summary_large_image"),
+        upsert('meta[name="twitter:title"]',        "content", title),
+        upsert('meta[name="twitter:description"]',  "content", desc),
+        ...(img ? [
+          upsert('meta[property="og:image"]',   "content", img),
+          upsert('meta[name="twitter:image"]',  "content", img),
+        ] : []),
+      ];
+
+      return () => {
+        document.title = prevTitle;
+        cleanups.forEach(fn => fn());
+      };
+    }, [p]);
+
     if (status === "loading") {
       return (
         <section className="eb-section" aria-busy="true">
@@ -1784,14 +1826,18 @@
         <div className="container pt-md-4">
           <div className="row g-4">
             <div className="col-md-6">
-              <SectionLink section="top" className="d-inline-block fw-bold fs-4 text-mustard text-decoration-none mb-2">Ember &amp; Brine</SectionLink>
+              <SectionLink section="top" className="d-inline-flex align-items-center gap-2 fw-bold fs-4 text-mustard text-decoration-none mb-2">
+                <img src="https://lh3.googleusercontent.com/d/1KeJ6UWa7oa3pybOM0jsU-fNXsNCGWg4e" alt="" aria-hidden="true" style={{ width: 32, height: 32, objectFit: "contain", flexShrink: 0 }} />
+                Ember &amp; Brine
+              </SectionLink>
               <p>Small-batch fermented hot sauce, made in Austin since 2019.</p>
             </div>
             <div className="col-6 col-md-3">
               <h4 className="fs-6 fw-bold text-white">Shop</h4>
               <ul className="list-unstyled d-grid gap-2">
                 <li><Link className="text-reset text-decoration-none" to="/sauces">All sauces</Link></li>
-                <li><a className="text-reset text-decoration-none" href="mailto:hello@example.com?subject=Gift%20cards">Gift cards</a></li>
+                <li><Link className="text-reset text-decoration-none" to="/">Home</Link></li>
+                <li><Link className="text-reset text-decoration-none" to="/about">About</Link></li>
               </ul>
             </div>
             <div className="col-6 col-md-3">
@@ -1800,8 +1846,6 @@
                 <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">FAQ</SectionLink></li>
                 <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">Shipping &amp; returns</SectionLink></li>
                 <li><Link className="text-reset text-decoration-none" to="/orders">Track your order</Link></li>
-                <li><a className="text-reset text-decoration-none" href="mailto:hello@example.com">Contact us</a></li>
-                <li><Link className="text-reset text-decoration-none" to="/about">About</Link></li>
               </ul>
             </div>
           </div>

@@ -4,16 +4,17 @@ A single-file React storefront for a hot sauce brand, built to run inside a **Go
 
 ## Overview
 
-The app renders five views via React Router's `HashRouter`, so the URL never changes from GHL's perspective — only the `#` fragment does. This means refreshes and shared links always work on a single GHL page.
+The app renders six views via React Router's `HashRouter`, so the URL never changes from GHL's perspective — only the `#` fragment does. This means refreshes and shared links always work on a single GHL page.
 
 | Route | View |
 |---|---|
-| `#/` | Home — hero, best sellers, hottest, heat picker, process, bundle, reviews, FAQ |
+| `#/` | Home — hero, best sellers, hottest, heat picker, process, reviews, FAQ |
 | `#/sauces` | All sauces with real-time search and heat filter (shareable URL) |
 | `#/sauce/:id` | Single sauce — full details, quantity stepper, total price, "you may also like" |
 | `#/checkout` | Order summary + Stripe card form |
 | `#/orders` | Look up an order by its UUID reference key |
 | `#/orders/:orderKey` | Order detail — shareable tracking link |
+| `#/about` | About page — project info and creator card |
 
 ## Tech Stack
 
@@ -65,6 +66,33 @@ Set `DEBUG_CHECKOUT: false` before going live.
 5. Publish.
 
 > **Bootstrap caveat:** Bootstrap's CSS resets apply to the whole GHL page. For best results, build the page from this block alone and don't mix other GHL section types.
+
+## Page Headers
+
+The sauces and orders pages have a full-width mustard header with a layered background — a mustard-to-transparent gradient over a photo — so text stays readable on any image.
+
+| Section | CSS ID | Image hides at |
+|---|---|---|
+| All sauces | `#eb-sauces-header` | ≤ 768 px (`max-width: 767.98px`) |
+| Track your order | `#eb-orders-header` | ≤ 992 px (`max-width: 991.98px`) |
+
+Background images are served from Google Drive via `https://lh3.googleusercontent.com/d/{file_id}`. To swap an image, replace the file ID in the relevant `#eb-sauces-header` or `#eb-orders-header` CSS rule.
+
+## SEO — Sauce Detail Page
+
+When a visitor lands on `#/sauce/:id`, the app dynamically updates `<head>` with:
+
+| Tag | Value |
+|---|---|
+| `<title>` | `{Sauce name} — Ember & Brine` |
+| `meta[name="description"]` | Sauce description |
+| `og:type` | `product` |
+| `og:title` / `og:description` | Sauce name / description |
+| `og:image` | Sauce photo URL |
+| `twitter:card` | `summary_large_image` |
+| `twitter:title` / `twitter:description` / `twitter:image` | Sauce name / description / photo |
+
+Tags are restored to their previous values (or removed if created) when the visitor navigates away, so other pages are not affected.
 
 ## API Contract
 
@@ -144,12 +172,21 @@ Custom CSS variables defined in `:root`:
 
 | Token | Value | Usage |
 |---|---|---|
-| `--eb-mustard` | `#F2C14E` | Hero bg, navbar bg |
-| `--eb-plum` | `#2E1A2B` | Primary text, buttons |
+| `--eb-mustard` | `#F2C14E` | Hero bg, navbar bg, page section headers |
+| `--eb-plum` | `#2E1A2B` | Primary text, buttons, footer bg |
 | `--eb-chili` | `#C8321F` | Accent, hover states, heat indicators |
-| `--eb-lime` | `#E3F0B7` | Accent backgrounds |
-| `--eb-paper` | `#FFFCF4` | Page background |
+| `--eb-lime` | `#E3F0B7` | Accent backgrounds, cart drawer banner |
+| `--eb-paper` | `#FFFCF4` | Page background, form inputs |
 | `--eb-soft` | `#5B4558` | Secondary text |
+
+## Footer
+
+The footer contains the brand logo and two navigation columns:
+
+| Column | Links |
+|---|---|
+| Shop | All sauces, Home, About |
+| Help | FAQ, Shipping & returns, Track your order |
 
 ## Accessibility
 
