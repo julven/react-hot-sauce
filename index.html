@@ -422,6 +422,9 @@
                 <NavLink to="/orders" className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>Track order</NavLink>
               </li>
               <li className="nav-item">
+                <NavLink to="/contact" className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>Contact</NavLink>
+              </li>
+              <li className="nav-item">
                 <NavLink to="/about" className="nav-link" onClick={close} style={({ isActive }) => (isActive ? activeStyle : undefined)}>About</NavLink>
               </li>
             </ul>
@@ -1820,6 +1823,141 @@
     );
   }
 
+  /* ---------- contact page ---------- */
+  function ContactPage() {
+    const [form, setForm] = useState({ name: "", email: "", message: "" });
+    const [errors, setErrors] = useState({});
+    const [sending, setSending] = useState(false);
+    const [result, setResult] = useState(null); // "success" | "error"
+
+    const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); if (errors[k]) setErrors({ ...errors, [k]: "" }); };
+
+    function validate() {
+      const e = {};
+      if (!form.name.trim()) e.name = "Full name is required.";
+      if (!form.email.trim()) e.email = "Email is required.";
+      if (!form.message.trim()) e.message = "Message is required.";
+      setErrors(e);
+      return Object.keys(e).length === 0;
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      console.log("[contact] Send message clicked", { name: form.name, email: form.email, message: form.message });
+      if (!validate()) return;
+      setSending(true);
+      setResult(null);
+      try {
+        const res = await fetch("https://general-server-nine.vercel.app/api/ghl/add-contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ name: form.name.trim(), email: form.email.trim(), message: form.message.trim() })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === true) {
+          setResult("success");
+          setForm({ name: "", email: "", message: "" });
+        } else {
+          setResult("error");
+        }
+      } catch (err) {
+        setResult("error");
+      } finally {
+        setSending(false);
+      }
+    }
+
+    return (
+      <>
+        <section className="bg-mustard" style={{ padding: "64px 0 56px" }}>
+          <div className="container">
+            <h1 className="eb-display mb-3" style={{ fontSize: "clamp(44px, 6vw, 80px)" }}>Contact us</h1>
+            <p className="fs-5 text-soft mb-0" style={{ maxWidth: "44ch" }}>
+              Have a question or feedback? Fill out the form below and we'll get back to you.
+            </p>
+          </div>
+        </section>
+
+        <section className="eb-section" style={{ paddingTop: 64 }}>
+          <div className="container">
+            <div className="row g-5 align-items-start">
+              <div className="col-lg-7">
+                <form onSubmit={handleSubmit} noValidate>
+                  <div className="d-grid gap-4">
+                    <Field label="Full name *" id="eb-ct-name" type="text" autoComplete="name" placeholder="Your name"
+                      value={form.name} onChange={set("name")} error={errors.name} />
+                    <Field label="Email *" id="eb-ct-email" type="email" autoComplete="email" placeholder="you@email.com"
+                      value={form.email} onChange={set("email")} error={errors.email} />
+                    <div>
+                      <label htmlFor="eb-ct-message" className="form-label small fw-semibold mb-1">Message *</label>
+                      <textarea id="eb-ct-message" className={`form-control form-control-lg bg-paper ${errors.message ? "is-invalid" : ""}`}
+                        style={{ borderRadius: 14, resize: "vertical", minHeight: 160 }}
+                        placeholder="What's on your mind?" rows={5}
+                        value={form.message} onChange={set("message")} />
+                      {errors.message && <div className="invalid-feedback">{errors.message}</div>}
+                    </div>
+                  </div>
+                  <div className="d-flex align-items-start gap-2 rounded-4 p-3 mt-4 small"
+                    style={{ background: "#FFF6DC", border: "1.5px solid var(--eb-mustard)", color: "var(--eb-plum)" }}>
+                    <span style={{ flexShrink: 0 }}>⚠️</span>
+                    <span><strong>Test demo website.</strong> Multiple emails will be sent to the email address provided.</span>
+                  </div>
+                  <button type="submit" className="btn btn-plum btn-lg rounded-pill px-5 fw-semibold mt-3" disabled={sending}>
+                    {sending ? <><span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />Sending…</> : "Send message"}
+                  </button>
+                  {result === "success" && (
+                    <div className="alert rounded-4 mt-4 mb-0 fw-semibold" style={{ background: "var(--eb-lime)", color: "var(--eb-plum)", border: "none" }} role="alert">
+                      Message sent! We'll get back to you soon.
+                    </div>
+                  )}
+                  {result === "error" && (
+                    <div className="alert alert-danger rounded-4 mt-4 mb-0" role="alert">
+                      Something went wrong. Please try again.
+                    </div>
+                  )}
+                </form>
+              </div>
+              <div className="col-lg-5">
+                <div className="bg-mustard rounded-5 p-4 p-lg-5" style={{ boxShadow: "0 4px 18px rgba(46,26,43,0.15)" }}>
+                  <h2 className="fs-4 fw-bold mb-4" style={{ color: "var(--eb-plum)" }}>Get in touch</h2>
+                  <div className="d-grid gap-4">
+                    <div className="d-flex gap-3 align-items-start">
+                      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>📍</span>
+                      <div>
+                        <div className="fw-semibold mb-1" style={{ color: "var(--eb-plum)" }}>Address</div>
+                        <div className="small" style={{ color: "var(--eb-plum)", opacity: 0.75 }}>412 Pepper Lane, Suite 3<br />Austin, TX 78701</div>
+                      </div>
+                    </div>
+                    <div className="d-flex gap-3 align-items-start">
+                      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>📞</span>
+                      <div>
+                        <div className="fw-semibold mb-1" style={{ color: "var(--eb-plum)" }}>Phone</div>
+                        <div className="small" style={{ color: "var(--eb-plum)", opacity: 0.75 }}>+1 (512) 555-0147</div>
+                      </div>
+                    </div>
+                    <div className="d-flex gap-3 align-items-start">
+                      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>✉️</span>
+                      <div>
+                        <div className="fw-semibold mb-1" style={{ color: "var(--eb-plum)" }}>Email</div>
+                        <div className="small" style={{ color: "var(--eb-plum)", opacity: 0.75 }}>hello@emberbrine.com</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 text-center">
+                    <span className="rounded-pill px-3 py-1 small fw-semibold d-inline-flex align-items-center gap-1"
+                      style={{ background: "#FFF6DC", border: "1.5px solid var(--eb-mustard)", color: "var(--eb-plum)" }}>
+                      ⚠️ Not real information
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
   function Footer() {
     return (
       <footer className="bg-plum text-muted-plum pt-5 pb-4 small">
@@ -1846,6 +1984,7 @@
                 <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">FAQ</SectionLink></li>
                 <li><SectionLink section="eb-faq" className="text-reset text-decoration-none">Shipping &amp; returns</SectionLink></li>
                 <li><Link className="text-reset text-decoration-none" to="/orders">Track your order</Link></li>
+                <li><Link className="text-reset text-decoration-none" to="/contact">Contact us</Link></li>
               </ul>
             </div>
           </div>
@@ -2048,6 +2187,7 @@
           <Route path="/orders" element={<OrdersPage known={known} />} />
           <Route path="/orders/:orderKey" element={<OrdersPage known={known} />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="*" element={<NotFound title="This page doesn't exist." text="The link may be old or mistyped." />} />
         </Routes>
         <Footer />
