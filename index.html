@@ -151,6 +151,19 @@
       #eb-orders-header { background-image: none; }
     }
 
+    #eb-contact-header {
+      background-color: var(--eb-mustard);
+      background-image:
+        linear-gradient(to right, #F2C14E 0%, #F2C14E 62%, rgba(242,193,78,0) 80%),
+        url('https://lh3.googleusercontent.com/d/1IOLzaFHeVL9uaol3wQgb6UuKKL9QFnfw');
+      background-size: 100% 100%, cover;
+      background-position: 0 0, center center;
+      background-repeat: no-repeat;
+    }
+    @media (max-width: 767.98px) {
+      #eb-contact-header { background-image: none; }
+    }
+
   </style>
 
   <!-- React mounts here -->
@@ -1869,7 +1882,7 @@
 
     return (
       <>
-        <section className="bg-mustard" style={{ padding: "64px 0 56px" }}>
+        <section id="eb-contact-header" style={{ padding: "64px 0 56px" }}>
           <div className="container">
             <h1 className="eb-display mb-3" style={{ fontSize: "clamp(44px, 6vw, 80px)" }}>Contact us</h1>
             <p className="fs-5 text-soft mb-0" style={{ maxWidth: "44ch" }}>

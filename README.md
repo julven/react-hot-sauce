@@ -4,7 +4,7 @@ A single-file React storefront for a hot sauce brand, built to run inside a **Go
 
 ## Overview
 
-The app renders six views via React Router's `HashRouter`, so the URL never changes from GHL's perspective — only the `#` fragment does. This means refreshes and shared links always work on a single GHL page.
+The app renders seven views via React Router's `HashRouter`, so the URL never changes from GHL's perspective — only the `#` fragment does. This means refreshes and shared links always work on a single GHL page.
 
 | Route | View |
 |---|---|
@@ -14,6 +14,7 @@ The app renders six views via React Router's `HashRouter`, so the URL never chan
 | `#/checkout` | Order summary + Stripe card form |
 | `#/orders` | Look up an order by its UUID reference key |
 | `#/orders/:orderKey` | Order detail — shareable tracking link |
+| `#/contact` | Contact page — form with API submission and "Get in touch" info card |
 | `#/about` | About page — project info and creator card |
 
 ## Tech Stack
@@ -52,6 +53,8 @@ const CONFIG = {
   BUNDLE: { id: "trio", name: "The Trio", price: 31, … },
   CART_KEY:       "eb-cart",                      // localStorage key for quantities
   CART_ITEMS_KEY: "eb-cart-items",                // localStorage key for item objects
+
+  CONTACT_URL: "https://…/api/ghl/add-contact",  // POST { name, email, message }; expects { status: true }
 };
 ```
 
@@ -179,6 +182,25 @@ Custom CSS variables defined in `:root`:
 | `--eb-paper` | `#FFFCF4` | Page background, form inputs |
 | `--eb-soft` | `#5B4558` | Secondary text |
 
+## Contact Page
+
+The `/contact` route renders a two-column layout:
+
+- **Left — contact form:** Name, email, and message fields with client-side validation. On submit, POSTs `{ name, email, message }` to `CONFIG.CONTACT_URL` and shows a success or error message based on `data.status === true`. A test-demo disclaimer is shown above the submit button.
+- **Right — "Get in touch" card:** Mustard background card with fake demo address, phone, and email. A warning pill at the bottom reads "⚠️ Not real information".
+
+### `POST CONTACT_URL` — Submit contact form
+
+Request body:
+```json
+{ "name": "…", "email": "…", "message": "…" }
+```
+Expected response:
+```json
+{ "status": true }
+```
+Any other response (or a network error) shows the error state.
+
 ## Footer
 
 The footer contains the brand logo and two navigation columns:
@@ -186,7 +208,7 @@ The footer contains the brand logo and two navigation columns:
 | Column | Links |
 |---|---|
 | Shop | All sauces, Home, About |
-| Help | FAQ, Shipping & returns, Track your order |
+| Help | FAQ, Shipping & returns, Track your order, Contact us |
 
 ## Accessibility
 
